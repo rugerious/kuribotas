@@ -147,3 +147,20 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# --- Kuribotas additions ---
+# Secrets: never commit; .env.example is the documented template
+.env
+.env.*
+!.env.example
+# Real family data: the chat database and its backups never go in Git
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+backups/
+# Web Push (VAPID) private keys
+vapid*.json

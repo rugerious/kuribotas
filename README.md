@@ -29,21 +29,22 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 MVP: 28–42 h.
 
 ## Planned architecture
-cat >> .gitignore <<'EOF'
 
-# --- Kuribotas additions ---
-# Secrets: never commit; .env.example is the documented template
-.env
-.env.*
-!.env.example
-# Real family data: the chat database and its backups never go in Git
-*.sqlite
-*.sqlite3
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-data/
-backups/
-# Web Push (VAPID) private keys
-vapid*.json
+~~~
+Phone (PWA) ──HTTPS/WSS──▶ Cloudflare Tunnel ──▶ small always-on server
+                                                  ├─ Node.js + TypeScript (HTTP + WebSocket)
+                                                  ├─ SQLite (messages, channels, users)
+                                                  └─ Web Push (VAPID) ──▶ phone notifications
+~~~
+
+## Rules this project follows
+
+- **Zero inbound ports.** The server is reached only through an outbound Cloudflare Tunnel.
+- **Family data never leaves the server.** No messages, names or screenshots of real chats in Git, issues, logs or this README. The database and its backups are git-ignored.
+- **No secrets in Git.** Runtime secrets live in a `0600` `.env` on the server; `.env.example` documents them.
+- **Inspired, not copied.** Features are ideas anyone can use; no names, logos, sounds, emoticons or icons from IRC clients or messengers. All art and sounds are original.
+- **Pinned versions, automated updates** (Dependabot), and every change through a pull request.
+
+## Licence
+
+[MIT](LICENSE)
