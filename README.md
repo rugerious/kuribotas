@@ -28,6 +28,28 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 
 MVP: 28–42 h.
 
+## What is built so far
+
+- **TypeScript monorepo** with npm workspaces: `server/` and `web/` (placeholder until the frontend is chosen).
+- **No build step:** Node 26 runs `.ts` files directly by stripping types; `tsc` runs as a type checker only (`erasableSyntaxOnly`, `strict`).
+- **One command for quality:** `npm run check` = type check + ESLint + tests (Node's built-in test runner).
+- **Server:** `GET /healthz` → `200 {"status":"ok"}`, everything else `404`; graceful shutdown on `SIGTERM`.
+- **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates.
+- **Dependency audit:** production tree clean (`npm audit --omit=dev`). One moderate, dev-only advisory (`minimatch` via ESLint) is accepted until upstream ships a fix: the patterns it parses are our own, and the suggested fix would downgrade ESLint a major version.
+
+### Repo layout
+
+~~~
+server/            Node.js + TypeScript backend
+  src/app.ts       builds the HTTP server
+  src/index.ts     starts it (HOST, PORT)
+  test/            node:test tests
+web/               web client (from phase 1)
+.githooks/         pre-commit hook
+tsconfig.json      shared type-check settings
+eslint.config.js   lint rules
+~~~
+
 ## Planned architecture
 
 ~~~
@@ -52,6 +74,10 @@ Requirements: Linux or WSL2, [nvm](https://github.com/nvm-sh/nvm), Node.js 26 LT
 ~~~
 nvm use                                # use the Node version from .nvmrc
 git config core.hooksPath .githooks    # enable the pre-commit hook (once per clone)
+npm ci                                 # install exactly what package-lock.json says
+npm run check                          # type check + lint + tests
+npm run dev --workspace server         # run the server, restart on save
+curl http://127.0.0.1:3000/healthz     # {"status":"ok"}
 ~~~
 
 **Pre-commit hook.** `.githooks/pre-commit` blocks a commit when the added lines contain a forbidden value: AWS account ID, email, domain or real family names, matched case-insensitively. The values live outside the repo in `~/.config/kuribotas/forbidden-patterns`, so the hook itself reveals nothing. GitHub secret scanning catches known secret *formats*; the hook catches this project's own *values*.
