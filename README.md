@@ -1,10 +1,12 @@
 # Kuribotas
 
+[![server](https://github.com/rugerious/kuribotas/actions/workflows/server.yml/badge.svg)](https://github.com/rugerious/kuribotas/actions/workflows/server.yml)
+
 **A real-time chat for family and friends — the child of 2000s IRC and instant messengers, rebuilt for the phone.**
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: 🚧 **Phase 0 — Foundations.** Target: in use by the family for Christmas 2026.
+> Status: ✅ Phase 0 done · 🚧 **Phase 1 — Basic chat.** Target: in use by the family for Christmas 2026.
 
 ## What it is
 
@@ -18,7 +20,7 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 
 | # | Phase | Hours (est.) | Status |
 |---|---|---|---|
-| 0 | Foundations: repo, TypeScript monorepo, CI → GHCR, Dependabot | 3–4 | 🚧 |
+| 0 | Foundations: repo, TypeScript monorepo, CI → GHCR, Dependabot | 3–4 | ✅ |
 | 1 | Basic chat: WebSocket server, channels, SQLite history, slash commands, retro UI | 7–10 | ⏳ |
 | 2 | Messenger side: statuses, private chats, nudge, typing indicator | 6–9 | ⏳ |
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ⏳ |
@@ -34,6 +36,8 @@ MVP: 28–42 h.
 - **No build step:** Node 26 runs `.ts` files directly by stripping types; `tsc` runs as a type checker only (`erasableSyntaxOnly`, `strict`).
 - **One command for quality:** `npm run check` = type check + ESLint + tests (Node's built-in test runner).
 - **Server:** `GET /healthz` → `200 {"status":"ok"}`, everything else `404`; graceful shutdown on `SIGTERM`.
+- **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`). Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
+- **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA. Dependabot proposes npm, Actions and Docker updates weekly.
 - **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates.
 - **Dependency audit:** production tree clean (`npm audit --omit=dev`). One moderate, dev-only advisory (`minimatch` via ESLint) is accepted until upstream ships a fix: the patterns it parses are our own, and the suggested fix would downgrade ESLint a major version.
 
@@ -48,6 +52,8 @@ web/               web client (from phase 1)
 .githooks/         pre-commit hook
 tsconfig.json      shared type-check settings
 eslint.config.js   lint rules
+Dockerfile         server image
+.github/           CI workflow, Dependabot, PR template
 ~~~
 
 ## Planned architecture
@@ -78,6 +84,8 @@ npm ci                                 # install exactly what package-lock.json 
 npm run check                          # type check + lint + tests
 npm run dev --workspace server         # run the server, restart on save
 curl http://127.0.0.1:3000/healthz     # {"status":"ok"}
+docker build -t kuribotas/server:dev .                          # build the image
+docker run --rm -p 127.0.0.1:3000:3000 kuribotas/server:dev     # run it locally
 ~~~
 
 **Pre-commit hook.** `.githooks/pre-commit` blocks a commit when the added lines contain a forbidden value: AWS account ID, email, domain or real family names, matched case-insensitively. The values live outside the repo in `~/.config/kuribotas/forbidden-patterns`, so the hook itself reveals nothing. GitHub secret scanning catches known secret *formats*; the hook catches this project's own *values*.
