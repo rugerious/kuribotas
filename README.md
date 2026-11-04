@@ -45,6 +45,17 @@ Phone (PWA) ──HTTPS/WSS──▶ Cloudflare Tunnel ──▶ small always-on
 - **Inspired, not copied.** Features are ideas anyone can use; no names, logos, sounds, emoticons or icons from IRC clients or messengers. All art and sounds are original.
 - **Pinned versions, automated updates** (Dependabot), and every change through a pull request.
 
+## Development setup
+
+Requirements: Linux or WSL2, [nvm](https://github.com/nvm-sh/nvm), Node.js 26 LTS (pinned in `.nvmrc`).
+
+~~~
+nvm use                                # use the Node version from .nvmrc
+git config core.hooksPath .githooks    # enable the pre-commit hook (once per clone)
+~~~
+
+**Pre-commit hook.** `.githooks/pre-commit` blocks a commit when the added lines contain a forbidden value: AWS account ID, email, domain or real family names, matched case-insensitively. The values live outside the repo in `~/.config/kuribotas/forbidden-patterns`, so the hook itself reveals nothing. GitHub secret scanning catches known secret *formats*; the hook catches this project's own *values*.
+
 ## Licence
 
 [MIT](LICENSE)
