@@ -1,0 +1,14 @@
+node_modules
+.git
+.githooks
+.github
+.env
+.env.*
+data
+backups
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+vapid*.json
+coverage
