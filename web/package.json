@@ -1,0 +1,5 @@
+{
+  "name": "@kuribotas/web",
+  "private": true,
+  "description": "Web client (framework chosen at step 1.4)"
+}
