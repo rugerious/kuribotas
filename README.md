@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–1 done (foundations, basic chat, web client) · 🚧 **Phase 2 — Messenger side** (statuses and "is typing…" done). Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–1 done (foundations, basic chat, web client) · 🚧 **Phase 2 — Messenger side** (statuses, "is typing…" and the nudge done). Target: in use by the family for Christmas 2026.
 
 ## What it is
 
@@ -50,6 +50,7 @@ MVP: 28–42 h.
 - **Web client:** Preact (React's API in ~4 KB) bundled by esbuild into a 22 KB script. Slash commands (`/nick`, `/join`, `/part`, `/me`, `/topic`, `/colour`, `/help`) become protocol messages; all screen state lives in one pure reducer, tested without a browser. Channel tabs with unread counts, topic bar, people list, `***` events, 24-hour timestamps. Dark theme; each channel has a colour, chosen per device. Open-licence fonts ship with the app. Messages are always rendered as text, never as HTML. Tested on two phones and two desktop browsers.
 - **Statuses, MSN style, in the family's own words:** 🟢 **Na bardea**, 🟡 **Já vorto**, 🔴 **No biolo**, 👻 **A zongolar** (invisible: to everyone else it looks exactly like leaving; coming back looks like arriving). Choosing a status picks a random caption (*No biolo · a fingir que trabalho*), or you write your own line (up to 80 characters). The app speaks Angolan Portuguese by default (`/lingua en` switches a device to English); every word lives in one file, `web/src/words.ts`, so the family's jokes change without touching code. Guests arrive as `Kamba-N`. Server errors carry a code, so each screen says them in its own language.
 - **"is typing…"**: a quiet line above the message box (*Kota está a escrever…*, *Kota e Kamba-2 estão a escrever…*). It clears when the message arrives, when the box is emptied, or 6 s after the last keystroke. Typing a command doesn't count, invisible people never show, and none of it is saved or logged. The server passes it on at most every 2 s per person and channel.
+- **The nudge (abanão)** 📳: `/abanar Kota`, or the 📳 beside a name, shakes Kota's screen, plays pots falling in the kitchen with a lid left spinning on the floor and vibrates Android phones; the whole channel sees *Kota abanou Kamba!*. Up to 3 quick nudges, then a pause. For special occasions, `/tornado Kota` 🌪️ shakes harder and harder for 2.5 s to a batucada with heavy bass that drops into a kuduro beat, one a minute. Every sound is made in code (Web Audio): no audio files, nothing recorded or copied. **No biolo** gets the shake without sound or vibration, `/abanoes nao` switches nudges off on a device, phones set to reduce motion get a flash of colour instead, and invisible people can neither nudge nor be found by a nudge. Nudges are not saved.
 - **Serving it:** the same server serves `web/dist` with a strict Content Security Policy (only our own scripts, styles and WebSocket; nothing from third parties) and path-traversal protection, tested with `../`, `%2e%2e` and `%2f` tricks.
 - **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`), built in two stages: the first bundles the web client with esbuild, the second holds only the server, its runtime dependencies and the built files. Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
 - **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
@@ -96,6 +97,7 @@ WebSocket at `/ws`, JSON text frames with a `type` field. The web client turns s
 | `{"type":"topic","channel":"#mujimbo","topic":"…"}` | `/topic …` | up to 200 characters; empty clears it |
 | `{"type":"status","status":"busy","note":"…"}` | `/biolo [note]` (`/bardea`, `/vorto`, `/zongolar`) | `online`, `away`, `busy` or `invisible`; note up to 80 characters |
 | `{"type":"typing","channel":"#mujimbo","typing":true}` | typing in the box (sent by the UI) | `true` at most every 3 s while typing, `false` when the box empties or a command is sent |
+| `{"type":"nudge","channel":"#mujimbo","nick":"Kota","tornado":false}` | `/abanar Kota` (`/tornado Kota`, or the 📳 button) | someone in that channel; 3 nudges per 10 s, 1 tornado per minute; refused while invisible |
 
 **Server → client**
 
@@ -109,6 +111,7 @@ WebSocket at `/ws`, JSON text frames with a `type` field. The web client turns s
 | `topic` `{channel, topic, nick}` | a channel's topic changed |
 | `presence` `{nick, status, note}` | someone's status or note changed (`invisible` is only ever sent to yourself) |
 | `typing` `{channel, nick, typing}` | someone in the channel started or stopped typing (never to the typer, never from invisible people, never saved) |
+| `nudge` `{channel, from, to, tornado}` | someone nudged someone in the channel; only `to` shakes. Not saved |
 | `message` `{id, channel, nick, kind, text, at}` | a `say` or `me`: saved first, then sent to the channel |
 | `error` `{code, detail, reason}` | your last request was refused (only you see it); the client translates `code` |
 

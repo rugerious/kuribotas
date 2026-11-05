@@ -23,6 +23,7 @@ export type Words = {
     changeColour: (channel: string, colour: string) => string;
     you: string;
     typing: (nicks: readonly string[]) => string; // "" when nobody is typing
+    nudge: (nick: string) => string; // the 📳 button's label
     connection: Record<"connecting" | "open" | "closed", string>;
   };
   events: {
@@ -39,11 +40,14 @@ export type Words = {
     colour: (channel: string, colour: string) => string;
     nowStatus: (status: string, note: string) => string;
     lang: string; // said in the new language, right after switching
+    nudge: (from: string, to: string) => string;
+    tornado: (from: string, to: string) => string;
+    shake: (on: boolean) => string;
     disconnected: string;
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake", string>;
   unknownCommand: (command: string) => string;
   help: readonly string[];
 };
@@ -80,6 +84,7 @@ const pt: Words = {
     yourStatus: "O teu estado",
     changeColour: (ch, c) => `Mudar a cor de ${ch} (agora ${c})`,
     you: "(tu)",
+    nudge: (nick) => `Abanar ${nick}`,
     typing: (n) =>
       n.length === 0
         ? ""
@@ -104,6 +109,10 @@ const pt: Words = {
     colour: (ch, c) => `${ch} agora é ${c} (neste aparelho)`,
     nowStatus: (s, note) => `Agora estás ${s}${note ? ` · ${note}` : ""}`,
     lang: "Agora falamos português de Angola (neste aparelho).",
+    nudge: (from, to) => (from === to ? `${from} abanou-se a si mesmo 🤪` : `${from} abanou ${to}! 📳`),
+    tornado: (from, to) => `${from} mandou um TORNADO para ${to}! 🌪️`,
+    shake: (on) =>
+      on ? "Abanões ligados neste aparelho 📳" : "Abanões desligados neste aparelho: vês a linha, sem tremer nem som",
     disconnected: "Ligação perdida. Recarrega a página para voltares.",
   },
   errors: {
@@ -114,10 +123,14 @@ const pt: Words = {
     join_first: (d) => `Entra primeiro no ${d} (/join ${d})`,
     topic_too_long: (d) => `Tópico muito comprido (máximo ${d})`,
     note_too_long: (d) => `Frase muito comprida (máximo ${d})`,
+    no_such_nick: (d) => `Não há nenhum ${d} neste canal`,
+    nudge_too_soon: (d) => `Calma aí! Espera ${d} s para abanar outra vez`,
+    tornado_too_soon: (d) => `Um tornado de cada vez 🌪️ Espera ${d} s`,
+    invisible_no_nudge: () => "A zongolar não dá para abanar ninguém (ias-te denunciar 👀)",
     internal: () => "Deu maka. Tenta outra vez.",
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick>", tornado: "/tornado <nick>", shake: "/abanoes sim | nao" },
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
   help: [
     "/nick <nome> — mudar o teu nick",
@@ -128,6 +141,9 @@ const pt: Words = {
     "/bardea · /vorto · /biolo · /zongolar [frase] — mudar o teu estado",
     "/frase <texto> — a frase debaixo do teu nome",
     "/cor [âmbar|azul|verde|coral|violeta] — a cor deste canal (neste aparelho)",
+    "/abanar <nick> — abanar o ecrã de alguém 📳 (até 3 seguidos)",
+    "/tornado <nick> — 🌪️ um por minuto",
+    "/abanoes nao — sem abanões neste aparelho (/abanoes sim para voltar)",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
   ],
@@ -158,6 +174,7 @@ const en: Words = {
     yourStatus: "Your status",
     changeColour: (ch, c) => `Change the colour of ${ch} (now ${c})`,
     you: "(you)",
+    nudge: (nick) => `Nudge ${nick}`,
     typing: (n) =>
       n.length === 0
         ? ""
@@ -182,6 +199,9 @@ const en: Words = {
     colour: (ch, c) => `${ch} is now ${c} (on this device)`,
     nowStatus: (s, note) => `You are now ${s}${note ? ` · ${note}` : ""}`,
     lang: "Now speaking English (on this device).",
+    nudge: (from, to) => (from === to ? `${from} nudged themselves 🤪` : `${from} nudged ${to}! 📳`),
+    tornado: (from, to) => `${from} sent a TORNADO to ${to}! 🌪️`,
+    shake: (on) => (on ? "Nudges on for this device 📳" : "Nudges off for this device: you'll see the line, no shaking or sound"),
     disconnected: "Disconnected. Reload the page to reconnect.",
   },
   errors: {
@@ -192,10 +212,14 @@ const en: Words = {
     join_first: (d) => `join ${d} first`,
     topic_too_long: (d) => `topic too long (max ${d})`,
     note_too_long: (d) => `note too long (max ${d})`,
+    no_such_nick: (d) => `nobody called ${d} in this channel`,
+    nudge_too_soon: (d) => `easy! wait ${d} s before nudging again`,
+    tornado_too_soon: (d) => `one tornado at a time 🌪️ wait ${d} s`,
+    invisible_no_nudge: () => "you can't nudge while invisible (it would give you away 👀)",
     internal: () => "something went wrong, please try again",
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick>", tornado: "/tornado <nick>", shake: "/shake on | off" },
   unknownCommand: (c) => `unknown command ${c} — try /help`,
   help: [
     "/nick <name> — change your nick",
@@ -206,6 +230,9 @@ const en: Words = {
     "/online · /away · /busy · /invisible [note] — change your status",
     "/note <text> — the line under your name",
     "/colour [amber|blue|green|coral|violet] — change this channel's colour (on this device)",
+    "/nudge <nick> — shake someone's screen 📳 (up to 3 in a row)",
+    "/tornado <nick> — 🌪️ one a minute",
+    "/shake off — no nudges on this device (/shake on to undo)",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",
   ],

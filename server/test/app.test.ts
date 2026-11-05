@@ -71,6 +71,8 @@ async function arrive(): Promise<{ c: Client; nick: string; joined: Msg }> {
 
 const send = (c: Client, msg: Msg): void => c.ws.send(JSON.stringify(msg));
 
+const pick = (err: Msg): unknown[] => [err.code, err.detail];
+
 const nicksOf = (joined: Msg): string[] => (joined.members as Msg[]).map((m) => String(m.nick));
 
 test("GET /healthz returns 200 and status ok", async () => {
@@ -403,6 +405,51 @@ test("typing is dropped while invisible, outside your channels, or malformed", l
   send(a.c, { type: "say", channel: "#mujimbo", text: "marker-3" }); // invisible people can still speak
   assert.equal((await nextReal(b.c)).text, "marker-3");
   assert.equal((await until(a.c, (m) => m.type !== "presence" && m.type !== "join" && m.type !== "quit")).text, "marker-3");
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("a nudge is seen by the channel; only the target shakes (the client decides that)", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "nudge", channel: "#mujimbo", nick: b.nick.toLowerCase(), tornado: false });
+  const seen = await until(b.c, ofType("nudge"));
+  assert.deepEqual(seen, { type: "nudge", channel: "#mujimbo", from: a.nick, to: b.nick, tornado: false });
+  assert.equal((await until(a.c, ofType("nudge"))).to, b.nick); // the sender sees it too
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("nudging nobody, an invisible person, or while invisible is refused", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "nudge", channel: "#mujimbo", nick: "Ninguém", tornado: false });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", "Ninguém"]);
+  send(b.c, { type: "status", status: "invisible", note: "" });
+  await until(a.c, (m) => m.type === "quit" && m.nick === b.nick);
+  send(a.c, { type: "nudge", channel: "#mujimbo", nick: b.nick, tornado: false });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", b.nick]); // same as nobody
+  send(b.c, { type: "nudge", channel: "#mujimbo", nick: a.nick, tornado: true });
+  assert.equal((await until(b.c, ofType("error"))).code, "invisible_no_nudge");
+  send(a.c, { type: "nudge", channel: "#elsewhere", nick: a.nick, tornado: false });
+  assert.equal((await until(a.c, ofType("error"))).code, "join_first");
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("three quick nudges, then a pause; one tornado a minute, counted apart", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  const nudge = (tornado: boolean) => send(a.c, { type: "nudge", channel: "#mujimbo", nick: b.nick, tornado });
+  for (let i = 0; i < 4; i++) nudge(false);
+  nudge(true);
+  nudge(true);
+  const got: string[] = [];
+  while (got.length < 6) {
+    const m = await until(a.c, (x) => x.type === "nudge" || x.type === "error");
+    got.push(m.type === "error" ? String(m.code) : m.tornado === true ? "tornado" : "nudge");
+  }
+  assert.deepEqual(got, ["nudge", "nudge", "nudge", "nudge_too_soon", "tornado", "tornado_too_soon"]);
   a.c.ws.close();
   b.c.ws.close();
 });

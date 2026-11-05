@@ -97,3 +97,19 @@ test("/lingua switches this device's language; anything else explains itself", (
   assert.deepEqual(parseInput("/lang PT", here, "en"), { kind: "lang", lang: "pt" });
   assert.deepEqual(parseInput("/lingua", here, "pt"), { kind: "error", text: "Usa assim: /lingua pt | en" });
 });
+
+test("/abanar and /tornado nudge someone in the open channel; /abanoes switches nudges on this device", () => {
+  assert.deepEqual(parseInput("/abanar Kota", here, "pt"), {
+    kind: "send",
+    msg: { type: "nudge", channel: here, nick: "Kota", tornado: false },
+  });
+  assert.deepEqual(parseInput("/tornado Kota", here, "pt"), {
+    kind: "send",
+    msg: { type: "nudge", channel: here, nick: "Kota", tornado: true },
+  });
+  assert.equal(parseInput("/nudge Kota", here, "en").kind, "send");
+  assert.deepEqual(parseInput("/tornado", here, "pt"), { kind: "error", text: "Usa assim: /tornado <nick>" });
+  assert.deepEqual(parseInput("/abanoes não", here, "pt"), { kind: "shake", on: false });
+  assert.deepEqual(parseInput("/shake ON", here, "en"), { kind: "shake", on: true });
+  assert.equal(parseInput("/abanoes talvez", here, "pt").kind, "error");
+});

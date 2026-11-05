@@ -11,6 +11,7 @@ export type Parsed =
   | { kind: "help" }
   | { kind: "colour"; colour?: RoomColour } // handled on this device; no colour = the next one
   | { kind: "lang"; lang: Lang } // handled on this device
+  | { kind: "shake"; on: boolean } // handled on this device
   | { kind: "error"; text: string }
   | { kind: "nothing" };
 
@@ -28,7 +29,13 @@ const ALIASES: Record<string, string> = {
   "/frase": "/note",
   "/lingua": "/lang",
   "/língua": "/lang",
+  "/abanar": "/nudge",
+  "/abanoes": "/shake",
+  "/abanões": "/shake",
 };
+
+const YES = ["sim", "on", "yes"];
+const NO = ["nao", "não", "off", "no"];
 
 const STATUS_COMMANDS: Record<string, Status> = {
   "/bardea": "online",
@@ -86,6 +93,17 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
         (c) => c === wanted || words("pt").colour[c] === wanted || words("en").colour[c] === wanted,
       );
       return colour ? { kind: "colour", colour } : usage(w.examples.colour);
+    }
+    case "/nudge":
+    case "/tornado":
+      return firstWord
+        ? send({ type: "nudge", channel, nick: firstWord, tornado: command === "/tornado" })
+        : usage(command === "/tornado" ? w.examples.tornado : w.examples.nudge);
+    case "/shake": {
+      const answer = firstWord.toLowerCase();
+      if (YES.includes(answer)) return { kind: "shake", on: true };
+      if (NO.includes(answer)) return { kind: "shake", on: false };
+      return usage(w.examples.shake);
     }
     case "/lang": {
       const wanted = firstWord.toLowerCase();

@@ -12,6 +12,8 @@ type Member = {
   note: string;
   channels: Set<string>;
   typingIn: Map<string, number>;
+  nudgedAt: number[]; // when this person's recent quick nudges were sent
+  tornadoAt: number | undefined; // when this person last sent a tornado
 };
 
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
@@ -23,6 +25,9 @@ const MAX_NOTE_LENGTH = 80; // characters in the line under your name
 const MAX_PAYLOAD_BYTES = 16 * 1024; // larger frames are rejected by ws (close code 1009)
 const CLOSE_GRACE_MS = 3000; // on shutdown, wait this long before force-closing clients
 const TYPING_MIN_INTERVAL_MS = 2000; // "is typing" passed on at most this often per person and channel
+const NUDGE_BURST = 3; // quick nudges allowed...
+const NUDGE_WINDOW_MS = 10_000; // ...in this window
+const TORNADO_EVERY_MS = 60_000; // one tornado a minute: an event, not spam
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
@@ -61,6 +66,8 @@ export function attachChat(server: Server, store: Store): Chat {
       note: "",
       channels: new Set(),
       typingIn: new Map(),
+      nudgedAt: [],
+      tornadoAt: undefined,
     };
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
@@ -181,6 +188,31 @@ export function attachChat(server: Server, store: Store): Chat {
         sendToChannel(channel, { type: "typing", channel, nick: me.nick, typing: msg.typing }, me);
         return;
       }
+      case "nudge": {
+        // Not saved: a nudge is a moment, not history.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't nudge while invisible");
+        const wanted = msg.nick.trim().toLowerCase();
+        // Invisible people get the same answer as nobody at all, so a nudge can't find them.
+        const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
+        if (target === undefined) return reject(me, "no_such_nick", msg.nick.trim(), `no ${msg.nick.trim()} in ${channel}`);
+        const now = Date.now();
+        if (msg.tornado) {
+          const wait = me.tornadoAt === undefined ? 0 : me.tornadoAt + TORNADO_EVERY_MS - now;
+          if (wait > 0) return reject(me, "tornado_too_soon", seconds(wait), "one tornado a minute");
+          me.tornadoAt = now;
+        } else {
+          me.nudgedAt = me.nudgedAt.filter((at) => now - at < NUDGE_WINDOW_MS);
+          const oldest = me.nudgedAt[0];
+          if (me.nudgedAt.length >= NUDGE_BURST && oldest !== undefined) {
+            return reject(me, "nudge_too_soon", seconds(oldest + NUDGE_WINDOW_MS - now), "too many nudges");
+          }
+          me.nudgedAt.push(now);
+        }
+        sendToChannel(channel, { type: "nudge", channel, from: me.nick, to: target.nick, tornado: msg.tornado });
+        return;
+      }
     }
   }
 
@@ -279,6 +311,10 @@ function sendRaw(member: Member, data: string): void {
   if (member.ws.readyState === WebSocket.OPEN) member.ws.send(data);
 }
 
+function seconds(ms: number): string {
+  return String(Math.max(1, Math.ceil(ms / 1000)));
+}
+
 function normaliseChannel(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -327,6 +363,13 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
     case "typing": {
       const channel = str("channel");
       return channel === undefined || typeof v.typing !== "boolean" ? undefined : { type: "typing", channel, typing: v.typing };
+    }
+    case "nudge": {
+      const channel = str("channel");
+      const nick = str("nick");
+      return channel === undefined || nick === undefined
+        ? undefined
+        : { type: "nudge", channel, nick, tornado: v.tornado === true };
     }
     default:
       return undefined;
