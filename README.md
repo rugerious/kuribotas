@@ -36,7 +36,8 @@ MVP: 28–42 h.
 - **No build step:** Node 26 runs `.ts` files directly by stripping types; `tsc` runs as a type checker only (`erasableSyntaxOnly`, `strict`).
 - **One command for quality:** `npm run check` = type check + ESLint + tests (Node's built-in test runner).
 - **Server:** one port for HTTP and WebSocket. `GET /healthz` → `200 {"status":"ok"}`, other paths `404`; WebSocket upgrades only on `/ws`. Graceful shutdown on `SIGTERM`: chat clients get close code 1001, stragglers are force-closed after 3 s.
-- **Real-time chat (first slice):** `ws` (zero dependencies) broadcasts every valid message to all connected clients; input is validated on the server; tested with Node's built-in WebSocket client, the same API browsers use (7 tests).
+- **Real-time chat (first slice):** `ws` (zero dependencies) broadcasts every valid message to all connected clients; input is validated on the server; tested with Node's built-in WebSocket client, the same API browsers use.
+- **History (SQLite):** Node's built-in `node:sqlite` (no native module). Schema `spaces` → `channels` → `messages`, upgraded by numbered migrations tracked in `PRAGMA user_version`, each in a transaction. WAL mode; prepared statements only (no SQL injection). A message is saved before it is broadcast; newcomers get the last 50. Data lives in `DATA_DIR` (default `./data`, `/data` in the image, mounted as a volume).
 - **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`). Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
 - **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
 - **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates.
@@ -49,6 +50,7 @@ server/            Node.js + TypeScript backend
   src/app.ts       builds the HTTP server
   src/index.ts     starts it (HOST, PORT)
   src/chat.ts      WebSocket chat on /ws
+  src/store.ts     SQLite: schema, migrations, messages
   test/            node:test tests
 web/               web client (from phase 1)
 .githooks/         pre-commit hook
@@ -64,9 +66,9 @@ WebSocket at `/ws`, JSON text frames with a `type` field. Every new feature beco
 
 | Direction | Message | Meaning |
 |---|---|---|
-| server → client | `{"type":"welcome"}` | sent once on connect |
+| server → client | `{"type":"welcome","channel":"#mujimbo","history":[…]}` | sent once on connect: the channel and its last 50 messages |
 | client → server | `{"type":"say","text":"…"}` | a chat message (1–2000 characters after trimming) |
-| server → everyone | `{"type":"message","text":"…","at":"<ISO time>"}` | broadcast of a valid `say` |
+| server → everyone | `{"type":"message","id":1,"channel":"#mujimbo","text":"…","at":"<ISO time>"}` | a valid `say`, saved first, then broadcast |
 
 Anything else is ignored. Frames over 16 KiB close that client with code 1009; on shutdown, clients get 1001 ("going away").
 
@@ -99,7 +101,7 @@ npm run check                          # type check + lint + tests
 npm run dev --workspace server         # run the server, restart on save
 curl http://127.0.0.1:3000/healthz     # {"status":"ok"}
 docker build -t kuribotas/server:dev .                          # build the image
-docker run --rm -p 127.0.0.1:3000:3000 kuribotas/server:dev     # run it locally
+docker run --rm -p 127.0.0.1:3000:3000 -v kuribotas-data:/data kuribotas/server:dev   # run it, data in a volume
 ~~~
 
 **Pre-commit hook.** `.githooks/pre-commit` blocks a commit when the added lines contain a forbidden value: AWS account ID, email, domain or real family names, matched case-insensitively. The values live outside the repo in `~/.config/kuribotas/forbidden-patterns`, so the hook itself reveals nothing. GitHub secret scanning catches known secret *formats*; the hook catches this project's own *values*.

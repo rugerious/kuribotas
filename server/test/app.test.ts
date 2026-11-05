@@ -6,7 +6,7 @@ import { createApp } from "../src/app.ts";
 type Msg = Record<string, unknown>;
 type Client = { ws: WebSocket; next: () => Promise<Msg>; closed: Promise<number> };
 
-const app = createApp();
+const app = createApp({ dbPath: ":memory:" });
 let httpUrl = "";
 let wsUrl = "";
 
@@ -61,13 +61,16 @@ test("unknown path returns 404", async () => {
   assert.equal(res.status, 404);
 });
 
-test("a new WebSocket client gets a welcome", async () => {
+test("a new client gets a welcome with the channel and its history", async () => {
   const a = await connect(wsUrl);
-  assert.deepEqual(await a.next(), { type: "welcome" });
+  const w = await a.next();
+  assert.equal(w.type, "welcome");
+  assert.equal(w.channel, "#mujimbo");
+  assert.ok(Array.isArray(w.history));
   a.ws.close();
 });
 
-test("a message is broadcast to every connected client", async () => {
+test("a message is saved and broadcast to every connected client", async () => {
   const a = await connect(wsUrl);
   const b = await connect(wsUrl);
   await a.next(); // welcome
@@ -76,9 +79,24 @@ test("a message is broadcast to every connected client", async () => {
   for (const c of [a, b]) {
     const m = await c.next();
     assert.equal(m.type, "message");
+    assert.equal(m.channel, "#mujimbo");
     assert.equal(m.text, "hello #mujimbo");
+    assert.equal(typeof m.id, "number");
     assert.equal(typeof m.at, "string");
   }
+  a.ws.close();
+  b.ws.close();
+});
+
+test("a newcomer sees recent messages in the welcome history", async () => {
+  const a = await connect(wsUrl);
+  await a.next(); // welcome
+  a.ws.send(JSON.stringify({ type: "say", text: "did you see this?" }));
+  await a.next(); // the broadcast: by now the message is saved
+  const b = await connect(wsUrl);
+  const w = await b.next();
+  const history = w.history as Msg[];
+  assert.equal(history.at(-1)?.text, "did you see this?");
   a.ws.close();
   b.ws.close();
 });
@@ -102,7 +120,7 @@ test("an oversized frame closes only that client; the server keeps running", asy
   a.ws.send("x".repeat(20 * 1024));
   assert.equal(await a.closed, 1009); // 1009 = message too big
   const b = await connect(wsUrl);
-  assert.deepEqual(await b.next(), { type: "welcome" });
+  assert.equal((await b.next()).type, "welcome");
   b.ws.close();
 });
 

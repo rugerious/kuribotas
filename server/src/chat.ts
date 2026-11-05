@@ -1,21 +1,24 @@
 import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
+import type { Store, StoredMessage } from "./store.ts";
 
 // What a client may send.
 type ClientMessage = { type: "say"; text: string };
 
 // What the server sends.
 type ServerMessage =
-  | { type: "welcome" }
-  | { type: "message"; text: string; at: string };
+  | { type: "welcome"; channel: string; history: StoredMessage[] }
+  | ({ type: "message" } & StoredMessage);
 
+const CHANNEL = "#mujimbo"; // the only channel until /join arrives (step 1.3)
+const HISTORY_LIMIT = 50; // messages sent to a newcomer
 const MAX_TEXT_LENGTH = 2000; // characters per chat message
 const MAX_PAYLOAD_BYTES = 16 * 1024; // larger frames are rejected by ws (close code 1009)
 const CLOSE_GRACE_MS = 3000; // on shutdown, wait this long before force-closing clients
 
 export type Chat = { close: () => Promise<void> };
 
-export function attachChat(server: Server): Chat {
+export function attachChat(server: Server, store: Store): Chat {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
 
   // Only /ws may upgrade to a WebSocket; anything else is refused.
@@ -35,13 +38,23 @@ export function attachChat(server: Server): Chat {
       console.warn(`websocket error: ${err.message}`);
     });
 
-    send(ws, { type: "welcome" });
+    // Everything a client needs to draw the screen, in one message.
+    send(ws, { type: "welcome", channel: CHANNEL, history: store.recentMessages(CHANNEL, HISTORY_LIMIT) });
 
     ws.on("message", (data, isBinary) => {
       if (isBinary) return;
       const msg = parseClientMessage(data.toString());
       if (msg === undefined) return; // ignore anything we don't understand
-      broadcast(wss, { type: "message", text: msg.text, at: new Date().toISOString() });
+
+      // Not saved = not delivered: never show a message that would vanish on restart.
+      let saved: StoredMessage;
+      try {
+        saved = store.addMessage(CHANNEL, msg.text, new Date().toISOString());
+      } catch (err) {
+        console.error(`could not save message: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      broadcast(wss, { type: "message", ...saved });
     });
   });
 
