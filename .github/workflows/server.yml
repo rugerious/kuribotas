@@ -17,7 +17,7 @@ concurrency:
 jobs:
   check:
     name: check (types, lint, tests, audit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # Every action is pinned to a full commit SHA (immutable); the comment is the version.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,7 +35,7 @@ jobs:
   image:
     name: image (build on PRs, push on main)
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write

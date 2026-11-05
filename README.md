@@ -37,7 +37,7 @@ MVP: 28–42 h.
 - **One command for quality:** `npm run check` = type check + ESLint + tests (Node's built-in test runner).
 - **Server:** `GET /healthz` → `200 {"status":"ok"}`, everything else `404`; graceful shutdown on `SIGTERM`.
 - **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`). Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
-- **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA. Dependabot proposes npm, Actions and Docker updates weekly.
+- **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
 - **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates.
 - **Dependency audit:** production tree clean (`npm audit --omit=dev`). One moderate, dev-only advisory (`minimatch` via ESLint) is accepted until upstream ships a fix: the patterns it parses are our own, and the suggested fix would downgrade ESLint a major version.
 
