@@ -65,7 +65,8 @@ const pt: Words = {
     invisible: "A zongolar",
   },
   captions: {
-    online: ["tô na bardea", "pronto pra kuribotice", "a ver o mujimbo"],
+    // The spelling is on purpose: writing it wrong is half the joke.
+    online: ["mo petu ta bom", "vaum me xentir", "pronto pra lançar venenu", "pronto pra kurobotice"],
     away: [
       "to vir já",
       "vou vorta já",
