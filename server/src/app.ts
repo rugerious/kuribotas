@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { attachChat } from "./chat.ts";
-import { staticFiles } from "./static.ts";
+import { familySounds, staticFiles } from "./static.ts";
 import { openStore } from "./store.ts";
 
 export type AppOptions = {
@@ -8,6 +8,8 @@ export type AppOptions = {
   dbPath: string;
   // Folder with the built web client (web/dist). Omit it to serve no files.
   webDir?: string;
+  // Folder with the family's own sounds (nudge.mp3, tornado.mp3). Private: never in Git or the image.
+  soundsDir?: string;
 };
 
 export type App = {
@@ -21,6 +23,7 @@ export type App = {
 export function createApp(options: AppOptions): App {
   const store = openStore(options.dbPath);
   const serveStatic = options.webDir === undefined ? undefined : staticFiles(options.webDir);
+  const serveSounds = options.soundsDir === undefined ? undefined : familySounds(options.soundsDir);
 
   const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method === "GET" && req.url === "/healthz") {
@@ -28,6 +31,7 @@ export function createApp(options: AppOptions): App {
       res.end(JSON.stringify({ status: "ok" }));
       return;
     }
+    if (serveSounds !== undefined && (await serveSounds(req, res))) return;
     if (serveStatic !== undefined && (await serveStatic(req, res))) return;
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "not found" }));

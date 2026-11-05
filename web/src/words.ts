@@ -43,11 +43,14 @@ export type Words = {
     nudge: (from: string, to: string) => string;
     tornado: (from: string, to: string) => string;
     shake: (on: boolean) => string;
+    sound: (name: string) => string;
+    sounds: (current: string, options: readonly string[]) => string;
     disconnected: string;
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound", string>;
+  unknownSound: (name: string, options: readonly string[]) => string;
   unknownCommand: (command: string) => string;
   help: readonly string[];
 };
@@ -113,6 +116,8 @@ const pt: Words = {
     tornado: (from, to) => `${from} mandou um TORNADO para ${to}! 🌪️`,
     shake: (on) =>
       on ? "Abanões ligados neste aparelho 📳" : "Abanões desligados neste aparelho: vês a linha, sem tremer nem som",
+    sound: (name) => `Som do abanão neste aparelho: ${name} 🔊`,
+    sounds: (current, options) => `Sons do abanão: ${options.join(" · ")} (agora: ${current}). Escolhe com /som <nome>`,
     disconnected: "Ligação perdida. Recarrega a página para voltares.",
   },
   errors: {
@@ -130,7 +135,8 @@ const pt: Words = {
     internal: () => "Deu maka. Tenta outra vez.",
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick>", tornado: "/tornado <nick>", shake: "/abanoes sim | nao" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick>", tornado: "/tornado <nick>", shake: "/abanoes sim | nao", sound: "/som <nome>" },
+  unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
   help: [
     "/nick <nome> — mudar o teu nick",
@@ -144,6 +150,7 @@ const pt: Words = {
     "/abanar <nick> — abanar o ecrã de alguém 📳 (até 3 seguidos)",
     "/tornado <nick> — 🌪️ um por minuto",
     "/abanoes nao — sem abanões neste aparelho (/abanoes sim para voltar)",
+    "/som — ver e escolher o som do abanão neste aparelho (/som 3, /som panelas)",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
   ],
@@ -202,6 +209,8 @@ const en: Words = {
     nudge: (from, to) => (from === to ? `${from} nudged themselves 🤪` : `${from} nudged ${to}! 📳`),
     tornado: (from, to) => `${from} sent a TORNADO to ${to}! 🌪️`,
     shake: (on) => (on ? "Nudges on for this device 📳" : "Nudges off for this device: you'll see the line, no shaking or sound"),
+    sound: (name) => `Nudge sound on this device: ${name} 🔊`,
+    sounds: (current, options) => `Nudge sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound <name>`,
     disconnected: "Disconnected. Reload the page to reconnect.",
   },
   errors: {
@@ -219,7 +228,8 @@ const en: Words = {
     internal: () => "something went wrong, please try again",
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick>", tornado: "/tornado <nick>", shake: "/shake on | off" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick>", tornado: "/tornado <nick>", shake: "/shake on | off", sound: "/sound <name>" },
+  unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   unknownCommand: (c) => `unknown command ${c} — try /help`,
   help: [
     "/nick <name> — change your nick",
@@ -233,6 +243,7 @@ const en: Words = {
     "/nudge <nick> — shake someone's screen 📳 (up to 3 in a row)",
     "/tornado <nick> — 🌪️ one a minute",
     "/shake off — no nudges on this device (/shake on to undo)",
+    "/sound — see and pick this device's nudge sound (/sound 3, /sound panelas)",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",
   ],

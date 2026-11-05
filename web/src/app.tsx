@@ -11,7 +11,15 @@ import {
   type Room,
   type RoomColour,
 } from "./state.ts";
-import { playNudge, unlockSound, vibrate } from "./sound.ts";
+import {
+  availableNudges,
+  DEFAULT_SOUND,
+  playNudge,
+  setNudgeSound,
+  tornadoSeconds,
+  unlockSound,
+  vibrate,
+} from "./sound.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
@@ -23,6 +31,26 @@ const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 const COLOURS_KEY = "kuribotas.colours";
 const LANG_KEY = "kuribotas.lang";
 const SHAKE_KEY = "kuribotas.shake"; // "off" = no nudges on this device
+const SOUND_KEY = "kuribotas.sound"; // this device's nudge sound (/som)
+
+function loadSound(): string | null {
+  try {
+    return localStorage.getItem(SOUND_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveSound(name: string): void {
+  try {
+    if (name === DEFAULT_SOUND) localStorage.removeItem(SOUND_KEY);
+    else localStorage.setItem(SOUND_KEY, name);
+  } catch {
+    // not saved: the choice still applies until the page is closed
+  }
+}
+
+setNudgeSound(loadSound());
 
 function loadShake(): boolean {
   try {
@@ -135,9 +163,13 @@ export function App() {
       playNudge(nudge.tornado);
       vibrate(nudge.tornado);
     }
+    // The tornado shakes for exactly as long as its sound plays. A CSS variable set from script is
+    // allowed by the strict CSP (only inline style attributes and <style> tags are blocked).
+    const seconds = nudge.tornado ? tornadoSeconds() : 0.8;
+    if (nudge.tornado) document.documentElement.style.setProperty("--tornado-s", `${seconds}s`);
     setShaking(""); // restart the animation if one is already running
     const start = setTimeout(() => setShaking(nudge.tornado ? "tornado" : "nudge"), 20);
-    const stop = setTimeout(() => setShaking(""), nudge.tornado ? 2600 : 900);
+    const stop = setTimeout(() => setShaking(""), seconds * 1000 + 100);
     return () => {
       clearTimeout(start);
       clearTimeout(stop);
@@ -179,6 +211,16 @@ export function App() {
         saveShake(parsed.on);
         setShakeOn(parsed.on);
         return dispatch({ type: "local", text: w.events.shake(parsed.on), tone: "info", at: now() });
+      case "sound": {
+        const options = availableNudges();
+        const say = (text: string, tone: "info" | "error" = "info") => dispatch({ type: "local", text, tone, at: now() });
+        if (parsed.name === undefined) return say(w.events.sounds(loadSound() ?? DEFAULT_SOUND, options));
+        if (!options.includes(parsed.name)) return say(w.unknownSound(parsed.name, options), "error");
+        saveSound(parsed.name);
+        setNudgeSound(parsed.name);
+        playNudge(false); // hear it straight away
+        return say(w.events.sound(parsed.name));
+      }
       case "lang":
         saveLang(parsed.lang);
         return dispatch({ type: "lang", lang: parsed.lang, at: now() });

@@ -321,7 +321,7 @@ body::after {
   animation: nudge 0.8s linear;
 }
 .app.shake-tornado {
-  animation: tornado 2.5s ease-in;
+  animation: tornado var(--tornado-s, 2.5s) ease-in; /* as long as the tornado's sound */
 }
 @keyframes nudge {
   0%, 100% { transform: none; }
