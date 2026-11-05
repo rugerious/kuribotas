@@ -1,10 +1,13 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { attachChat } from "./chat.ts";
+import { staticFiles } from "./static.ts";
 import { openStore } from "./store.ts";
 
 export type AppOptions = {
   // Path to the SQLite file, or ":memory:" for a throwaway database (tests).
   dbPath: string;
+  // Folder with the built web client (web/dist). Omit it to serve no files.
+  webDir?: string;
 };
 
 export type App = {
@@ -17,15 +20,25 @@ export type App = {
 // on a random port with an in-memory database, without side effects.
 export function createApp(options: AppOptions): App {
   const store = openStore(options.dbPath);
+  const serveStatic = options.webDir === undefined ? undefined : staticFiles(options.webDir);
 
-  const server = createServer((req, res) => {
+  const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method === "GET" && req.url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
       return;
     }
+    if (serveStatic !== undefined && (await serveStatic(req, res))) return;
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "not found" }));
+  };
+
+  const server = createServer((req, res) => {
+    route(req, res).catch((err: unknown) => {
+      console.error(`request failed: ${err instanceof Error ? err.message : String(err)}`);
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "internal error" }));
+    });
   });
 
   const chat = attachChat(server, store);

@@ -1,5 +1,15 @@
 {
   "name": "@kuribotas/web",
   "private": true,
-  "description": "Web client (framework chosen at step 1.4)"
+  "type": "module",
+  "description": "Web client: Preact, bundled by esbuild into web/dist",
+  "scripts": {
+    "build": "node build.ts",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@fontsource/bebas-neue": "5.3.0",
+    "@fontsource/dm-mono": "5.3.0",
+    "preact": "11.1.1"
+  }
 }

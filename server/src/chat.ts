@@ -1,28 +1,7 @@
 import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { Channel, Store, StoredMessage } from "./store.ts";
-
-// What a client may send. The UI turns "/nick Rita", "/join #futebol", "/me waves",
-// "/topic ..." and "/part" into these; the server never parses typed text.
-type ClientMessage =
-  | { type: "nick"; nick: string }
-  | { type: "join"; channel: string }
-  | { type: "part"; channel: string }
-  | { type: "say"; channel: string; text: string }
-  | { type: "me"; channel: string; text: string }
-  | { type: "topic"; channel: string; topic: string };
-
-// What the server sends.
-type ServerMessage =
-  | { type: "welcome"; nick: string; channels: Channel[] }
-  | { type: "joined"; channel: string; topic: string; members: string[]; history: StoredMessage[] }
-  | { type: "join"; channel: string; nick: string }
-  | { type: "part"; channel: string; nick: string }
-  | { type: "quit"; nick: string }
-  | { type: "nick"; old: string; nick: string }
-  | { type: "topic"; channel: string; topic: string; nick: string }
-  | ({ type: "message" } & StoredMessage)
-  | { type: "error"; reason: string };
+import type { ClientMessage, ServerMessage } from "../../shared/protocol.ts";
+import type { Store } from "./store.ts";
 
 // One connected person.
 type Member = { ws: WebSocket; nick: string; channels: Set<string> };

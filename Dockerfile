@@ -1,5 +1,19 @@
-# Kuribotas server image.
+# Kuribotas server image, built in two stages.
 # Base pinned by digest: the tag says which line, the digest says exactly which bytes.
+
+# --- Stage 1: build the web client. Needs dev tools (esbuild), which never reach the final image. ---
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS web
+
+WORKDIR /build
+COPY package.json package-lock.json ./
+COPY server/package.json server/package.json
+COPY web/package.json web/package.json
+RUN npm ci
+COPY shared shared
+COPY web web
+RUN npm run build --workspace web
+
+# --- Stage 2: the image that runs. Server sources, runtime dependencies and the built web files only. ---
 FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
 
 ENV NODE_ENV=production \
@@ -9,15 +23,16 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# Install runtime dependencies only (none yet; ws and SQLite arrive in phase 1).
-# Dev tools such as ESLint and TypeScript never enter the image.
+# Install runtime dependencies only. Dev tools such as ESLint, TypeScript and esbuild never enter the image.
 COPY package.json package-lock.json ./
 COPY server/package.json server/package.json
 COPY web/package.json web/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Node 26 runs the TypeScript sources directly (type stripping): no build step.
+# Node 26 runs the TypeScript sources directly (type stripping): no build step for the server.
 COPY server/src server/src
+# The web client built in stage 1: index.html, main.js, style.css (and source maps).
+COPY --from=web /build/web/dist web/dist
 
 # The chat database lives in /data, owned by the app user. Mount a volume there so
 # messages survive replacing the container: docker run -v kuribotas-data:/data ...
