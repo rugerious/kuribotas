@@ -4,7 +4,8 @@ FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    DATA_DIR=/data
 
 WORKDIR /app
 
@@ -17,6 +18,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Node 26 runs the TypeScript sources directly (type stripping): no build step.
 COPY server/src server/src
+
+# The chat database lives in /data, owned by the app user. Mount a volume there so
+# messages survive replacing the container: docker run -v kuribotas-data:/data ...
+RUN mkdir /data && chown node:node /data
 
 # Run as the unprivileged "node" user that the official image provides.
 USER node
