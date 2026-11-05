@@ -36,8 +36,8 @@ MVP: 28–42 h.
 - **No build step:** Node 26 runs `.ts` files directly by stripping types; `tsc` runs as a type checker only (`erasableSyntaxOnly`, `strict`).
 - **One command for quality:** `npm run check` = type check + ESLint + tests (Node's built-in test runner).
 - **Server:** one port for HTTP and WebSocket. `GET /healthz` → `200 {"status":"ok"}`, other paths `404`; WebSocket upgrades only on `/ws`. Graceful shutdown on `SIGTERM`: chat clients get close code 1001, stragglers are force-closed after 3 s.
-- **Real-time chat (first slice):** `ws` (zero dependencies) broadcasts every valid message to all connected clients; input is validated on the server; tested with Node's built-in WebSocket client, the same API browsers use.
-- **History (SQLite):** Node's built-in `node:sqlite` (no native module). Schema `spaces` → `channels` → `messages`, upgraded by numbered migrations tracked in `PRAGMA user_version`, each in a transaction. WAL mode; prepared statements only (no SQL injection). A message is saved before it is broadcast; newcomers get the last 50. Data lives in `DATA_DIR` (default `./data`, `/data` in the image, mounted as a volume).
+- **Real-time chat:** `ws` (zero dependencies). Everyone arrives with a guest nick and can change it (unique, ignoring case); anyone creates a channel by joining it; messages, members, history and topic are per channel; `/me` actions; join, part, quit and nick events; errors go only to whoever caused them. Requests are checked for shape, then for meaning, and a database failure never kills a connection. Tested with Node's built-in WebSocket client, the same API browsers use.
+- **History (SQLite):** Node's built-in `node:sqlite` (no native module). Schema `spaces` → `channels` → `messages`, upgraded by numbered migrations tracked in `PRAGMA user_version`, each in a transaction (two so far: v2 added the author and `say`/`me`); a test upgrades a real version-1 database. WAL mode; prepared statements only (no SQL injection). A message is saved before it is broadcast; newcomers get the last 50. Data lives in `DATA_DIR` (default `./data`, `/data` in the image, mounted as a volume).
 - **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`). Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
 - **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
 - **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates.
@@ -62,15 +62,33 @@ Dockerfile         server image
 
 ### Chat protocol (so far)
 
-WebSocket at `/ws`, JSON text frames with a `type` field. Every new feature becomes a new `type`.
+WebSocket at `/ws`, JSON text frames with a `type` field. The web client turns slash commands into these messages; the server never parses typed text.
 
-| Direction | Message | Meaning |
+**Client → server**
+
+| Message | Slash command | Rules |
 |---|---|---|
-| server → client | `{"type":"welcome","channel":"#mujimbo","history":[…]}` | sent once on connect: the channel and its last 50 messages |
-| client → server | `{"type":"say","text":"…"}` | a chat message (1–2000 characters after trimming) |
-| server → everyone | `{"type":"message","id":1,"channel":"#mujimbo","text":"…","at":"<ISO time>"}` | a valid `say`, saved first, then broadcast |
+| `{"type":"nick","nick":"Rita"}` | `/nick Rita` | 1–24 letters, digits or `_-~*^.\|[]{}`; unique, ignoring case |
+| `{"type":"join","channel":"#futebol"}` | `/join #futebol` | creates the channel if needed; `#` + 1–32 letters, digits, `_` or `-`; stored in lower case |
+| `{"type":"part","channel":"#futebol"}` | `/part` | leave a channel |
+| `{"type":"say","channel":"#mujimbo","text":"…"}` | plain text | channels you have joined; 1–2000 characters |
+| `{"type":"me","channel":"#mujimbo","text":"waves"}` | `/me waves` | same rules as `say` |
+| `{"type":"topic","channel":"#mujimbo","topic":"…"}` | `/topic …` | up to 200 characters; empty clears it |
 
-Anything else is ignored. Frames over 16 KiB close that client with code 1009; on shutdown, clients get 1001 ("going away").
+**Server → client**
+
+| Message | When |
+|---|---|
+| `welcome` `{nick, channels}` | on connect: your guest nick and the channel list |
+| `joined` `{channel, topic, members, history}` | you joined a channel (everyone lands in `#mujimbo`); history = last 50 messages |
+| `join` / `part` `{channel, nick}` | someone joined or left a channel you are in |
+| `quit` `{nick}` | someone who shares a channel with you disconnected |
+| `nick` `{old, nick}` | someone changed nick |
+| `topic` `{channel, topic, nick}` | a channel's topic changed |
+| `message` `{id, channel, nick, kind, text, at}` | a `say` or `me`: saved first, then sent to the channel |
+| `error` `{reason}` | your last request was refused (only you see it) |
+
+Anything malformed is ignored. Frames over 16 KiB close that client with code 1009; on shutdown, clients get 1001 ("going away").
 
 ## Planned architecture
 
