@@ -22,6 +22,7 @@ export type Words = {
     yourStatus: string;
     changeColour: (channel: string, colour: string) => string;
     you: string;
+    typing: (nicks: readonly string[]) => string; // "" when nobody is typing
     connection: Record<"connecting" | "open" | "closed", string>;
   };
   events: {
@@ -74,11 +75,19 @@ const pt: Words = {
     peopleIn: (ch) => `Kambas em ${ch}`,
     topic: "Tópico",
     noTopic: "(sem tópico: /topico para pôr um)",
-    placeholder: (ch) => `Manda o mujimbo para ${ch}, ou /ajuda`,
+    placeholder: (ch) => `Mete dica para ${ch}`,
     messageTo: (ch) => `Mensagem para ${ch}`,
     yourStatus: "O teu estado",
     changeColour: (ch, c) => `Mudar a cor de ${ch} (agora ${c})`,
     you: "(tu)",
+    typing: (n) =>
+      n.length === 0
+        ? ""
+        : n.length === 1
+          ? `${n[0]} está a escrever…`
+          : n.length === 2
+            ? `${n[0]} e ${n[1]} estão a escrever…`
+            : `${n[0]}, ${n[1]} e mais ${n.length - 2} estão a escrever…`,
     connection: { connecting: "a ligar…", open: "ligado", closed: "desligado" },
   },
   events: {
@@ -149,6 +158,14 @@ const en: Words = {
     yourStatus: "Your status",
     changeColour: (ch, c) => `Change the colour of ${ch} (now ${c})`,
     you: "(you)",
+    typing: (n) =>
+      n.length === 0
+        ? ""
+        : n.length === 1
+          ? `${n[0]} is typing…`
+          : n.length === 2
+            ? `${n[0]} and ${n[1]} are typing…`
+            : `${n[0]}, ${n[1]} and ${n.length - 2} more are typing…`,
     connection: { connecting: "connecting…", open: "online", closed: "offline" },
   },
   events: {

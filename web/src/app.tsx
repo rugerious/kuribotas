@@ -1,11 +1,21 @@
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import type { ClientMessage, Member, ServerMessage, Status } from "../../shared/protocol.ts";
 import { parseInput } from "./commands.ts";
-import { colourOf, initialState, reduce, ROOM_COLOURS, type Line, type Room, type RoomColour } from "./state.ts";
+import {
+  colourOf,
+  initialState,
+  reduce,
+  ROOM_COLOURS,
+  typingIn,
+  type Line,
+  type Room,
+  type RoomColour,
+} from "./state.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
+const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 
 // Channel colours are remembered in this browser only. Storage can be blocked (private mode),
 // so every read and write is allowed to fail quietly.
@@ -86,6 +96,12 @@ export function App() {
 
   useEffect(() => saveColours(state.colours), [state.colours]);
 
+  // "is typing" runs out on its own; the reducer returns the same state when nothing changed.
+  useEffect(() => {
+    const timer = setInterval(() => dispatch({ type: "tick", at: now() }), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const send = (msg: ClientMessage): void => {
     const ws = socket.current;
     if (ws !== null && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -119,8 +135,14 @@ export function App() {
     }
   };
 
+  // Invisible people don't say they're typing (the server would drop it anyway).
+  const typing = (channel: string, active: boolean): void => {
+    if (state.status !== "invisible" || !active) send({ type: "typing", channel, typing: active });
+  };
+
   const room = state.rooms.find((r) => r.name === state.active);
   const online = state.connection === "open";
+  const typers = typingIn(room);
 
   return (
     <div class={`app room-${colourOf(state, state.active)}`}>
@@ -196,7 +218,8 @@ export function App() {
         {room && <People room={room} me={state.nick} open={showPeople} w={w} />}
       </div>
 
-      <InputBar onSubmit={submit} disabled={!online} channel={state.active} w={w} />
+      <div class="typing">{w.ui.typing(typers)}</div>
+      <InputBar onSubmit={submit} onTyping={typing} disabled={!online} channel={state.active} w={w} />
     </div>
   );
 }
@@ -270,18 +293,49 @@ function PersonRow({ member, isMe, w }: { member: Member; isMe: boolean; w: Word
   );
 }
 
+// A line counts as a message being typed unless it is a command (but "//text" is a message).
+function isMessage(text: string): boolean {
+  const t = text.trimStart();
+  return t !== "" && (!t.startsWith("/") || t.startsWith("//"));
+}
+
 function InputBar({
   onSubmit,
+  onTyping,
   disabled,
   channel,
   w,
 }: {
   onSubmit: (text: string) => void;
+  onTyping: (channel: string, typing: boolean) => void;
   disabled: boolean;
   channel: string;
   w: Words;
 }) {
   const [text, setText] = useState("");
+  // Where we last said "is typing", and when: repeated every few seconds, stopped once.
+  const told = useRef<{ channel: string; at: number } | null>(null);
+
+  const stopTyping = (): void => {
+    if (told.current !== null) onTyping(told.current.channel, false);
+    told.current = null;
+  };
+
+  // Switching tab mid-sentence: the old channel shouldn't think we're still typing there.
+  useEffect(() => {
+    if (told.current !== null && told.current.channel !== channel) stopTyping();
+  }, [channel]);
+
+  const changed = (value: string): void => {
+    setText(value);
+    if (!isMessage(value)) return stopTyping();
+    const last = told.current;
+    if (last === null || Date.now() - last.at >= TYPING_REPEAT_MS) {
+      onTyping(channel, true);
+      told.current = { channel, at: Date.now() };
+    }
+  };
+
   return (
     <form
       class="input"
@@ -289,6 +343,9 @@ function InputBar({
         e.preventDefault();
         onSubmit(text);
         setText("");
+        // A message clears "is typing" for everyone; a command needs an explicit stop.
+        if (isMessage(text)) told.current = null;
+        else stopTyping();
       }}
     >
       <label class="visually-hidden" for="message">
@@ -297,7 +354,7 @@ function InputBar({
       <input
         id="message"
         value={text}
-        onInput={(e) => setText(e.currentTarget.value)}
+        onInput={(e) => changed(e.currentTarget.value)}
         placeholder={w.ui.placeholder(channel)}
         maxLength={2000}
         autoComplete="off"

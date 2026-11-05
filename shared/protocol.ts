@@ -45,7 +45,8 @@ export type ClientMessage =
   | { type: "say"; channel: string; text: string }
   | { type: "me"; channel: string; text: string }
   | { type: "topic"; channel: string; topic: string }
-  | { type: "status"; status: Status; note: string };
+  | { type: "status"; status: Status; note: string }
+  | { type: "typing"; channel: string; typing: boolean }; // true at most every few seconds; false when the box empties
 
 // What the server sends.
 export type ServerMessage =
@@ -57,5 +58,6 @@ export type ServerMessage =
   | { type: "nick"; old: string; nick: string }
   | { type: "topic"; channel: string; topic: string; nick: string }
   | { type: "presence"; nick: string; status: Status; note: string }
+  | { type: "typing"; channel: string; nick: string; typing: boolean } // never saved; clients hide it after a few seconds
   | ({ type: "message" } & ChatMessage)
   | { type: "error"; code: ErrorCode; detail: string; reason: string };

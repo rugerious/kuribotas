@@ -1,7 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Member, ServerMessage } from "../../shared/protocol.ts";
-import { colourOf, initialState, reduce, ROOM_COLOURS, type Line, type State } from "../src/state.ts";
+import {
+  colourOf,
+  initialState,
+  reduce,
+  ROOM_COLOURS,
+  TYPING_SHOWN_MS,
+  typingIn,
+  type Line,
+  type State,
+} from "../src/state.ts";
 
 const at = "2026-12-24T20:00:00.000Z";
 
@@ -184,4 +193,30 @@ test("switching language says so in the new language; earlier lines stay as they
   const lines = texts(s.rooms[0]?.lines ?? []);
   assert.equal(lines.at(-1), "*** Agora falamos português de Angola (neste aparelho).");
   assert.deepEqual(lines.slice(0, -1), texts(before.rooms[0]?.lines ?? []));
+});
+
+const typing = (nick: string, on = true, channel = "#mujimbo"): ServerMessage => ({ type: "typing", channel, nick, typing: on });
+const later = (ms: number): string => new Date(Date.parse(at) + ms).toISOString();
+
+test("someone typing shows until it runs out; nothing is written in the chat", () => {
+  const before = arrived();
+  const s = apply(before, typing("Pai"));
+  assert.deepEqual(typingIn(s.rooms[0]), ["Pai"]);
+  assert.equal(s.rooms[0]?.lines.length, before.rooms[0]?.lines.length);
+  assert.equal(reduce(s, { type: "tick", at: later(TYPING_SHOWN_MS - 1000) }), s); // still typing: same state
+  assert.deepEqual(typingIn(reduce(s, { type: "tick", at: later(TYPING_SHOWN_MS) }).rooms[0]), []);
+});
+
+test("typing again keeps one entry; a stop, the message, leaving or quitting clears it", () => {
+  const s = apply(arrived(), typing("Pai"), typing("Pai"), typing("Mãe"));
+  assert.deepEqual(typingIn(s.rooms[0]), ["Pai", "Mãe"]);
+  assert.deepEqual(typingIn(apply(s, typing("Pai", false)).rooms[0]), ["Mãe"]);
+  assert.deepEqual(typingIn(apply(s, msg("#mujimbo", "Pai", "cheguei", 2)).rooms[0]), ["Mãe"]);
+  assert.deepEqual(typingIn(apply(s, { type: "part", channel: "#mujimbo", nick: "Pai" }).rooms[0]), ["Mãe"]);
+  assert.deepEqual(typingIn(apply(s, { type: "quit", nick: "Pai" }).rooms[0]), ["Mãe"]);
+});
+
+test("a nick change follows the typer; my own typing is never shown", () => {
+  const s = apply(arrived(), typing("Pai"), { type: "nick", old: "Pai", nick: "Kota" }, typing("Guest-1"));
+  assert.deepEqual(typingIn(s.rooms[0]), ["Kota"]);
 });

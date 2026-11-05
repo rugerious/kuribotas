@@ -4,7 +4,15 @@ import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Sta
 import type { Store } from "./store.ts";
 
 // One connected person. Nicks and statuses live in memory, IRC style (accounts come with invites, phase 4).
-type Member = { ws: WebSocket; nick: string; status: Status; note: string; channels: Set<string> };
+// `typingIn`: channel -> when we last passed on "is typing" (to rate-limit it, and to know a stop is due).
+type Member = {
+  ws: WebSocket;
+  nick: string;
+  status: Status;
+  note: string;
+  channels: Set<string>;
+  typingIn: Map<string, number>;
+};
 
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
 const GUEST_PREFIX = "Kamba-"; // newcomers are friends: Kamba-1, Kamba-2...
@@ -14,6 +22,7 @@ const MAX_TOPIC_LENGTH = 200; // characters per topic
 const MAX_NOTE_LENGTH = 80; // characters in the line under your name
 const MAX_PAYLOAD_BYTES = 16 * 1024; // larger frames are rejected by ws (close code 1009)
 const CLOSE_GRACE_MS = 3000; // on shutdown, wait this long before force-closing clients
+const TYPING_MIN_INTERVAL_MS = 2000; // "is typing" passed on at most this often per person and channel
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
@@ -45,7 +54,14 @@ export function attachChat(server: Server, store: Store): Chat {
       console.warn(`websocket error: ${err.message}`);
     });
 
-    const me: Member = { ws, nick: newGuestNick(), status: "online", note: "", channels: new Set() };
+    const me: Member = {
+      ws,
+      nick: newGuestNick(),
+      status: "online",
+      note: "",
+      channels: new Set(),
+      typingIn: new Map(),
+    };
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
     run(me, () => join(me, HOME_CHANNEL));
@@ -96,6 +112,7 @@ export function attachChat(server: Server, store: Store): Chat {
         if (visible(me)) sendToChannel(channel, part); // the leaver sees it too
         else send(me, part);
         me.channels.delete(channel);
+        me.typingIn.delete(channel);
         return;
       }
       case "say":
@@ -113,6 +130,7 @@ export function attachChat(server: Server, store: Store): Chat {
           text,
           at: new Date().toISOString(),
         });
+        me.typingIn.delete(channel); // the others clear "is typing" when the message arrives
         sendToChannel(channel, { type: "message", ...saved });
         return;
       }
@@ -135,6 +153,7 @@ export function attachChat(server: Server, store: Store): Chat {
         const wasVisible = visible(me);
         me.status = msg.status;
         me.note = note;
+        if (!visible(me)) me.typingIn.clear(); // the others saw a quit, which clears it on their side
         const peers = peersOf(me);
         // Going invisible looks exactly like leaving; coming back looks like arriving (MSN did the same).
         if (wasVisible && !visible(me)) for (const other of peers) send(other, { type: "quit", nick: me.nick });
@@ -144,6 +163,22 @@ export function attachChat(server: Server, store: Store): Chat {
         const presence: ServerMessage = { type: "presence", nick: me.nick, status: me.status, note: me.note };
         send(me, presence);
         if (visible(me)) for (const other of peers) send(other, presence);
+        return;
+      }
+      case "typing": {
+        // Not saved, not logged, and never an error: it is only a hint, so anything odd is dropped.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel) || !visible(me)) return; // invisible people never give themselves away
+        const last = me.typingIn.get(channel);
+        if (msg.typing) {
+          const now = Date.now();
+          if (last !== undefined && now - last < TYPING_MIN_INTERVAL_MS) return;
+          me.typingIn.set(channel, now);
+        } else {
+          if (last === undefined) return; // nothing to stop
+          me.typingIn.delete(channel);
+        }
+        sendToChannel(channel, { type: "typing", channel, nick: me.nick, typing: msg.typing }, me);
         return;
       }
     }
@@ -288,6 +323,10 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       const status = STATUSES.find((s) => s === v.status);
       const note = str("note") ?? "";
       return status === undefined ? undefined : { type: "status", status, note };
+    }
+    case "typing": {
+      const channel = str("channel");
+      return channel === undefined || typeof v.typing !== "boolean" ? undefined : { type: "typing", channel, typing: v.typing };
     }
     default:
       return undefined;

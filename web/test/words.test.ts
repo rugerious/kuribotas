@@ -32,3 +32,16 @@ test("every caption fits the 80-character limit the server enforces", () => {
     }
   }
 });
+
+test("who is typing reads naturally for one, two and many", () => {
+  const pt = words("pt").ui.typing;
+  assert.equal(pt([]), "");
+  assert.equal(pt(["Kota"]), "Kota está a escrever…");
+  assert.equal(pt(["Kota", "Kamba-2"]), "Kota e Kamba-2 estão a escrever…");
+  assert.equal(pt(["Kota", "Kamba-2", "Mais_Velho", "Kamba-3"]), "Kota, Kamba-2 e mais 2 estão a escrever…");
+  assert.equal(words("en").ui.typing(["Kota", "Kamba-2"]), "Kota and Kamba-2 are typing…");
+});
+
+test("the message box says where the message goes", () => {
+  assert.equal(words("pt").ui.placeholder("#mujimbo"), "Mete dica para #mujimbo");
+});

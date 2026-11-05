@@ -347,3 +347,62 @@ test("leaving while invisible tells nobody", limits, async () => {
   assert.deepEqual([next.type, next.text], ["message", "after"]);
   b.c.ws.close();
 });
+
+// For "nothing else arrived" checks: skips other tests' joins and quits, returns the next real message.
+const nextReal = (c: Client): Promise<Msg> => until(c, (m) => m.type !== "join" && m.type !== "quit");
+
+test("typing reaches the others in that channel only, never the typer", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  const c = await arrive(); // only in #mujimbo
+  for (const x of [a, b]) {
+    send(x.c, { type: "join", channel: "#bula" });
+    await until(x.c, (m) => m.type === "joined" && m.channel === "#bula");
+  }
+  send(a.c, { type: "typing", channel: "#bula", typing: true });
+  const seen = await until(b.c, ofType("typing"));
+  assert.deepEqual(seen, { type: "typing", channel: "#bula", nick: a.nick, typing: true });
+  // a and c get nothing: the next real message each sees is the marker.
+  send(b.c, { type: "say", channel: "#mujimbo", text: "marker-1" });
+  assert.deepEqual([(await nextReal(a.c)).text, (await nextReal(c.c)).text], ["marker-1", "marker-1"]);
+  a.c.ws.close();
+  b.c.ws.close();
+  c.c.ws.close();
+});
+
+test("typing is passed on at most every 2 seconds; a stop always follows a start", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: true });
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: true }); // too soon: dropped
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: false });
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: false }); // nothing left to stop: dropped
+  send(a.c, { type: "say", channel: "#mujimbo", text: "marker-2" });
+  const got: unknown[] = [];
+  for (;;) {
+    const m = await nextReal(b.c);
+    if (m.type === "message") break;
+    if (m.nick === a.nick) got.push(m.typing);
+  }
+  assert.deepEqual(got, [true, false]);
+  // After a message, the next keystroke is passed on straight away.
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: true });
+  assert.equal((await until(b.c, (m) => m.type === "typing" && m.nick === a.nick)).typing, true);
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("typing is dropped while invisible, outside your channels, or malformed", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "typing", channel: "#nowhere", typing: true }); // not in it: no error either
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: "yes" });
+  send(a.c, { type: "status", status: "invisible", note: "" });
+  await until(b.c, (m) => m.type === "quit" && m.nick === a.nick);
+  send(a.c, { type: "typing", channel: "#mujimbo", typing: true });
+  send(a.c, { type: "say", channel: "#mujimbo", text: "marker-3" }); // invisible people can still speak
+  assert.equal((await nextReal(b.c)).text, "marker-3");
+  assert.equal((await until(a.c, (m) => m.type !== "presence" && m.type !== "join" && m.type !== "quit")).text, "marker-3");
+  a.c.ws.close();
+  b.c.ws.close();
+});

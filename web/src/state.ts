@@ -6,6 +6,9 @@ import { words, type Lang } from "./words.ts";
 
 export const HOME_CHANNEL = "#mujimbo";
 const MAX_LINES = 500; // per room, so a long day doesn't slow the phone down
+// "is typing" stays this long after the last notice. Senders repeat it every 3 s while typing,
+// so it only runs out when someone stops (or their phone loses signal).
+export const TYPING_SHOWN_MS = 6000;
 
 // Each channel has a colour (tab, topic bar, accents). Chosen per device, like a wallpaper.
 export const ROOM_COLOURS = ["amber", "blue", "green", "coral", "violet"] as const;
@@ -21,6 +24,7 @@ export type Room = {
   members: Member[];
   lines: Line[];
   unread: number;
+  typing: { nick: string; until: number }[]; // who is typing here, and until when (ms)
 };
 
 export type Connection = "connecting" | "open" | "closed";
@@ -44,7 +48,8 @@ export type Action =
   | { type: "local"; text: string; tone: "info" | "error"; at: string }
   | { type: "focus"; channel: string }
   | { type: "colour"; channel: string; colour?: RoomColour; at: string } // no colour = the next one
-  | { type: "lang"; lang: Lang; at: string };
+  | { type: "lang"; lang: Lang; at: string }
+  | { type: "tick"; at: string }; // every second: "is typing" runs out
 
 export const initialState: State = {
   lang: "pt",
@@ -99,13 +104,27 @@ export function reduce(state: State, action: Action): State {
       const switched = { ...state, lang: action.lang };
       return addEvent(switched, switched.active, words(action.lang).events.lang, action.at, "info");
     }
+    case "tick": {
+      const now = Date.parse(action.at);
+      if (!state.rooms.some((r) => r.typing.some((t) => t.until <= now))) return state; // same state: no re-render
+      return { ...state, rooms: state.rooms.map((r) => ({ ...r, typing: r.typing.filter((t) => t.until > now) })) };
+    }
   }
+}
+
+// Who is typing in a room, for the line above the input.
+export function typingIn(room: Room | undefined): string[] {
+  return room?.typing.map((t) => t.nick) ?? [];
 }
 
 function onServer(state: State, msg: ServerMessage, at: string): State {
   const w = words(state.lang);
   const hasMember = (r: Room, nick: string): boolean => r.members.some((m) => m.nick === nick);
-  const without = (r: Room, nick: string): Room => ({ ...r, members: r.members.filter((m) => m.nick !== nick) });
+  const notTyping = (r: Room, nick: string): Room => ({ ...r, typing: r.typing.filter((t) => t.nick !== nick) });
+  const without = (r: Room, nick: string): Room => ({
+    ...notTyping(r, nick),
+    members: r.members.filter((m) => m.nick !== nick),
+  });
   switch (msg.type) {
     case "welcome":
       return { ...state, nick: msg.nick, known: msg.channels };
@@ -114,7 +133,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       const first = state.rooms.length === 0;
       let seq = state.seq;
       const lines: Line[] = msg.history.map((m) => ({ kind: "message", key: ++seq, msg: m }));
-      const room: Room = { name: msg.channel, topic: msg.topic, members: msg.members, lines, unread: 0 };
+      const room: Room = { name: msg.channel, topic: msg.topic, members: msg.members, lines, unread: 0, typing: [] };
       let next: State = {
         ...state,
         seq,
@@ -160,6 +179,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         next = updateRoom(next, room.name, (r) => ({
           ...r,
           members: r.members.map((m) => (m.nick === msg.old ? { ...m, nick: msg.nick } : m)),
+          typing: r.typing.map((t) => (t.nick === msg.old ? { ...t, nick: msg.nick } : t)),
         }));
         next = addEvent(next, room.name, w.events.nickChange(msg.old, msg.nick), at, "info");
       }
@@ -184,7 +204,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       const seq = state.seq + 1;
       return {
         ...updateRoom(state, chat.channel, (r) => ({
-          ...r,
+          ...notTyping(r, chat.nick), // the message they were typing has arrived
           lines: trim([...r.lines, { kind: "message", key: seq, msg: chat }]),
           unread: r.name === state.active ? r.unread : r.unread + 1,
         })),
@@ -205,6 +225,15 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       // Me: remember it and say it once, in the open tab.
       next = { ...next, status: msg.status, note: msg.note };
       return addEvent(next, next.active, w.events.nowStatus(w.status[msg.status], msg.note), at, "info");
+    }
+
+    case "typing": {
+      if (msg.nick === state.nick) return state;
+      const until = Date.parse(at) + TYPING_SHOWN_MS;
+      return updateRoom(state, msg.channel, (r) => ({
+        ...r,
+        typing: msg.typing ? [...notTyping(r, msg.nick).typing, { nick: msg.nick, until }] : notTyping(r, msg.nick).typing,
+      }));
     }
 
     case "error": {

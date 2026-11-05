@@ -309,14 +309,26 @@ body::after {
   font-weight: 400;
 }
 
+/* "Kota está a escrever…": always takes its line, so the chat doesn't jump when it appears */
+.typing {
+  min-height: 1.6em;
+  padding: 2px 14px 0;
+  color: var(--muted);
+  font: italic 12px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
 /* Input */
 .input {
   display: flex;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 6px 12px 10px;
   padding-bottom: max(10px, env(safe-area-inset-bottom));
   background: var(--bg);
-  border-top: 1px solid var(--border);
 }
 .input input {
   flex: 1;
