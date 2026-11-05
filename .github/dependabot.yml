@@ -8,6 +8,11 @@ updates:
       # ESLint, typescript-eslint and TypeScript move together: one PR, not five.
       dev-tools:
         dependency-type: development
+    ignore:
+      # Hold TypeScript 7 until typescript-eslint supports it (8.72.1 peer: typescript <6.1.0).
+      # Remove this block when a typescript-eslint release accepts typescript 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
