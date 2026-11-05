@@ -11,6 +11,7 @@ import {
   type Room,
   type RoomColour,
 } from "./state.ts";
+import { playNudge, unlockSound, vibrate } from "./sound.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
@@ -21,6 +22,24 @@ const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 // so every read and write is allowed to fail quietly.
 const COLOURS_KEY = "kuribotas.colours";
 const LANG_KEY = "kuribotas.lang";
+const SHAKE_KEY = "kuribotas.shake"; // "off" = no nudges on this device
+
+function loadShake(): boolean {
+  try {
+    return localStorage.getItem(SHAKE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function saveShake(on: boolean): void {
+  try {
+    if (on) localStorage.removeItem(SHAKE_KEY);
+    else localStorage.setItem(SHAKE_KEY, "off");
+  } catch {
+    // not saved: the choice still applies until the page is closed
+  }
+}
 
 function loadLang(): string | null {
   try {
@@ -68,6 +87,8 @@ export function App() {
     colours: loadColours(),
   }));
   const [showPeople, setShowPeople] = useState(false);
+  const [shakeOn, setShakeOn] = useState(loadShake);
+  const [shaking, setShaking] = useState<"" | "nudge" | "tornado">("");
   const socket = useRef<WebSocket | null>(null);
   const w = words(state.lang);
 
@@ -95,6 +116,33 @@ export function App() {
   }, []);
 
   useEffect(() => saveColours(state.colours), [state.colours]);
+
+  // Sound needs one touch first (a browser rule); any tap or key press will do.
+  useEffect(() => {
+    addEventListener("pointerdown", unlockSound);
+    addEventListener("keydown", unlockSound);
+    return () => {
+      removeEventListener("pointerdown", unlockSound);
+      removeEventListener("keydown", unlockSound);
+    };
+  }, []);
+
+  // Someone nudged me: shake, and (unless I'm No biolo) buzz and vibrate.
+  useEffect(() => {
+    const nudge = state.nudged;
+    if (nudge === null || !shakeOn) return;
+    if (state.status !== "busy") {
+      playNudge(nudge.tornado);
+      vibrate(nudge.tornado);
+    }
+    setShaking(""); // restart the animation if one is already running
+    const start = setTimeout(() => setShaking(nudge.tornado ? "tornado" : "nudge"), 20);
+    const stop = setTimeout(() => setShaking(""), nudge.tornado ? 2600 : 900);
+    return () => {
+      clearTimeout(start);
+      clearTimeout(stop);
+    };
+  }, [state.nudged?.key]);
 
   // "is typing" runs out on its own; the reducer returns the same state when nothing changed.
   useEffect(() => {
@@ -127,6 +175,10 @@ export function App() {
         return dispatch({ type: "local", text: parsed.text, tone: "error", at: now() });
       case "colour":
         return dispatch({ type: "colour", channel: state.active, colour: parsed.colour, at: now() });
+      case "shake":
+        saveShake(parsed.on);
+        setShakeOn(parsed.on);
+        return dispatch({ type: "local", text: w.events.shake(parsed.on), tone: "info", at: now() });
       case "lang":
         saveLang(parsed.lang);
         return dispatch({ type: "lang", lang: parsed.lang, at: now() });
@@ -145,7 +197,7 @@ export function App() {
   const typers = typingIn(room);
 
   return (
-    <div class={`app room-${colourOf(state, state.active)}`}>
+    <div class={`app room-${colourOf(state, state.active)}${shaking ? ` shake-${shaking}` : ""}`}>
       <header class="bar">
         <h1 class="brand">
           KURI<span>BOTAS</span>
@@ -215,7 +267,16 @@ export function App() {
 
       <div class="body">
         <Log lines={room?.lines ?? []} />
-        {room && <People room={room} me={state.nick} open={showPeople} w={w} />}
+        {room && (
+          <People
+            room={room}
+            me={state.nick}
+            open={showPeople}
+            canNudge={online}
+            onNudge={(nick) => send({ type: "nudge", channel: room.name, nick, tornado: false })}
+            w={w}
+          />
+        )}
       </div>
 
       <div class="typing">{w.ui.typing(typers)}</div>
@@ -263,27 +324,65 @@ function LineView({ line }: { line: Line }) {
   );
 }
 
-function People({ room, me, open, w }: { room: Room; me: string; open: boolean; w: Words }) {
+function People({
+  room,
+  me,
+  open,
+  canNudge,
+  onNudge,
+  w,
+}: {
+  room: Room;
+  me: string;
+  open: boolean;
+  canNudge: boolean;
+  onNudge: (nick: string) => void;
+  w: Words;
+}) {
   const sorted = [...room.members].sort((a, b) => a.nick.localeCompare(b.nick));
   return (
     <aside class={open ? "people open" : "people"} aria-label={w.ui.peopleIn(room.name)}>
       <h2 class="people-title">{room.name}</h2>
       <ul>
         {sorted.map((m) => (
-          <PersonRow key={m.nick} member={m} isMe={m.nick === me} w={w} />
+          <PersonRow key={m.nick} member={m} isMe={m.nick === me} canNudge={canNudge} onNudge={onNudge} w={w} />
         ))}
       </ul>
     </aside>
   );
 }
 
-function PersonRow({ member, isMe, w }: { member: Member; isMe: boolean; w: Words }) {
+function PersonRow({
+  member,
+  isMe,
+  canNudge,
+  onNudge,
+  w,
+}: {
+  member: Member;
+  isMe: boolean;
+  canNudge: boolean;
+  onNudge: (nick: string) => void;
+  w: Words;
+}) {
   return (
     <li class="person">
       <span class="person-line">
         <span class={`dot st-${member.status}`} aria-hidden="true" />
         <span class={`person-nick ${nickClass(member.nick)}`}>{member.nick}</span>
         {isMe && <span class="you"> {w.ui.you}</span>}
+        {!isMe && (
+          <button
+            type="button"
+            class="nudge"
+            aria-label={w.ui.nudge(member.nick)}
+            title={w.ui.nudge(member.nick)}
+            disabled={!canNudge}
+            onClick={() => onNudge(member.nick)}
+          >
+            📳
+          </button>
+        )}
       </span>
       <span class="person-status">
         {w.status[member.status]}

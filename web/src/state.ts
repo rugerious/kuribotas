@@ -39,6 +39,7 @@ export type State = {
   rooms: Room[]; // channels we're in, in the order we joined
   active: string; // the open tab
   colours: Record<string, RoomColour>; // colours picked on this device
+  nudged: { key: number; tornado: boolean } | null; // the last time someone shook me (the app shakes, buzzes, vibrates)
   seq: number; // gives every line a unique key
 };
 
@@ -61,6 +62,7 @@ export const initialState: State = {
   rooms: [],
   active: HOME_CHANNEL,
   colours: {},
+  nudged: null,
   seq: 0,
 };
 
@@ -225,6 +227,12 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       // Me: remember it and say it once, in the open tab.
       next = { ...next, status: msg.status, note: msg.note };
       return addEvent(next, next.active, w.events.nowStatus(w.status[msg.status], msg.note), at, "info");
+    }
+
+    case "nudge": {
+      const text = msg.tornado ? w.events.tornado(msg.from, msg.to) : w.events.nudge(msg.from, msg.to);
+      const next = addEvent(state, msg.channel, text, at, "info");
+      return msg.to === state.nick ? { ...next, nudged: { key: next.seq, tornado: msg.tornado } } : next;
     }
 
     case "typing": {

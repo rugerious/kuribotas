@@ -220,3 +220,36 @@ test("a nick change follows the typer; my own typing is never shown", () => {
   const s = apply(arrived(), typing("Pai"), { type: "nick", old: "Pai", nick: "Kota" }, typing("Guest-1"));
   assert.deepEqual(typingIn(s.rooms[0]), ["Kota"]);
 });
+
+const nudge = (from: string, to: string, tornado = false): ServerMessage => ({
+  type: "nudge",
+  channel: "#mujimbo",
+  from,
+  to,
+  tornado,
+});
+
+test("a nudge for me is remembered so the app shakes; others only see the line", () => {
+  const s = apply(arrived(), nudge("Pai", "Guest-1"));
+  assert.equal(texts(s.rooms[0]?.lines ?? []).at(-1), "*** Pai nudged Guest-1! 📳");
+  assert.deepEqual(s.nudged, { key: s.seq, tornado: false });
+  const t = apply(s, nudge("Pai", "Mãe", true));
+  assert.equal(texts(t.rooms[0]?.lines ?? []).at(-1), "*** Pai sent a TORNADO to Mãe! 🌪️");
+  assert.equal(t.nudged, s.nudged); // not me: nothing new to shake
+});
+
+test("every nudge for me is a new one, even the same kind twice", () => {
+  const s = apply(arrived(), nudge("Pai", "Guest-1"));
+  const again = apply(s, nudge("Pai", "Guest-1"));
+  assert.notEqual(again.nudged?.key, s.nudged?.key);
+});
+
+test("nudge errors are translated", () => {
+  const pt = apply(
+    initialState,
+    { type: "welcome", nick: "Kamba-1", channels: [] },
+    { type: "joined", channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
+    { type: "error", code: "nudge_too_soon", detail: "7", reason: "too many nudges" },
+  );
+  assert.equal(texts(pt.rooms[0]?.lines ?? []).at(-1), "*** Calma aí! Espera 7 s para abanar outra vez");
+});

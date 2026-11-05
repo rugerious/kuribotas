@@ -34,6 +34,10 @@ export type ErrorCode =
   | "join_first"
   | "topic_too_long"
   | "note_too_long"
+  | "no_such_nick" // nobody by that name in the channel (invisible people included, so they stay hidden)
+  | "nudge_too_soon" // detail = seconds to wait
+  | "tornado_too_soon" // detail = seconds to wait
+  | "invisible_no_nudge" // nudging would give you away
   | "internal";
 
 // What a client may send. The web UI turns "/nick Rita", "/join #futebol", "/me waves",
@@ -46,7 +50,8 @@ export type ClientMessage =
   | { type: "me"; channel: string; text: string }
   | { type: "topic"; channel: string; topic: string }
   | { type: "status"; status: Status; note: string }
-  | { type: "typing"; channel: string; typing: boolean }; // true at most every few seconds; false when the box empties
+  | { type: "typing"; channel: string; typing: boolean } // true at most every few seconds; false when the box empties
+  | { type: "nudge"; channel: string; nick: string; tornado: boolean }; // shake someone's screen (/abanar, /tornado)
 
 // What the server sends.
 export type ServerMessage =
@@ -59,5 +64,6 @@ export type ServerMessage =
   | { type: "topic"; channel: string; topic: string; nick: string }
   | { type: "presence"; nick: string; status: Status; note: string }
   | { type: "typing"; channel: string; nick: string; typing: boolean } // never saved; clients hide it after a few seconds
+  | { type: "nudge"; channel: string; from: string; to: string; tornado: boolean } // the whole channel sees it; only `to` shakes
   | ({ type: "message" } & ChatMessage)
   | { type: "error"; code: ErrorCode; detail: string; reason: string };
