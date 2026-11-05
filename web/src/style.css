@@ -1,0 +1,351 @@
+/* Kuribotas — a 2000s chat, rebuilt for the phone. Dark by default, in the Nzo ya Marques palette.
+   Fonts are shipped with the app (open-licence DM Mono and Bebas Neue): nothing is fetched from third parties. */
+
+@import "@fontsource/dm-mono/latin-400.css";
+@import "@fontsource/dm-mono/latin-400-italic.css";
+@import "@fontsource/dm-mono/latin-500.css";
+@import "@fontsource/bebas-neue/latin-400.css";
+
+:root {
+  color-scheme: dark;
+  --bg: #080a0f;
+  --panel: #0d1117;
+  --surface: #141c26;
+  --border: #1e2d40;
+  --ink: #e8e4dc;
+  --muted: #8aa0b4; /* timestamps and *** lines: 7:1 on the panel, readable all evening */
+  --amber: #f5a623;
+  --blue: #5bb8ff;
+  --green: #2dce7a;
+  --coral: #ff7a59;
+  --violet: #c792ea;
+  --error: #ff6b4a;
+  --room: var(--amber); /* the open channel's colour, set by the room-* classes */
+  --mono: "DM Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  --display: "Bebas Neue", "DM Mono", sans-serif;
+}
+
+.room-amber { --room: var(--amber); }
+.room-blue { --room: var(--blue); }
+.room-green { --room: var(--green); }
+.room-coral { --room: var(--coral); }
+.room-violet { --room: var(--violet); }
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+/* A faint CRT scanline texture over everything (it never blocks a tap). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.12) 2px, rgba(0, 0, 0, 0.12) 4px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 1100px;
+  margin: 0 auto;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+/* Top bar */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  margin: 0;
+  flex: 1;
+  font: 400 28px/1 var(--display);
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.brand span {
+  color: var(--amber);
+}
+.status {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.status-open {
+  border-color: var(--green);
+  color: var(--green);
+}
+.status-open::before {
+  content: "● ";
+}
+.status-closed {
+  border-color: var(--error);
+  color: var(--error);
+}
+.status-closed::before {
+  content: "● ";
+}
+.me {
+  font-weight: 500;
+  color: var(--amber);
+}
+
+/* Channel tabs: each in its own colour */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  overflow-x: auto;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  font: 500 14px/1 var(--mono);
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-top: 2px solid transparent;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover {
+  color: var(--room);
+}
+.tab.active {
+  background: var(--surface);
+  color: var(--room);
+  border-top-color: var(--room);
+}
+.badge {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 11px;
+  background: var(--room);
+  color: var(--bg);
+  font-weight: 500;
+}
+
+/* Topic */
+.topic {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.colour-dot {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--panel);
+  background: var(--room);
+  box-shadow: 0 0 0 1px var(--room), 0 0 10px var(--room);
+  cursor: pointer;
+}
+.topic-text {
+  flex: 1;
+  min-width: 0;
+}
+.label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--room);
+  margin-right: 8px;
+}
+.people-toggle {
+  font: 500 12px/1 var(--mono);
+  letter-spacing: 0.06em;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--room);
+  background: transparent;
+  color: var(--room);
+  cursor: pointer;
+}
+
+/* Messages + people */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+.log {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  background: var(--panel);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.line {
+  padding: 1px 0;
+}
+.time {
+  color: var(--muted);
+}
+.event {
+  color: var(--muted);
+}
+.event.error {
+  color: var(--error);
+}
+.action {
+  font-style: italic;
+}
+.nick {
+  font-weight: 500;
+}
+/* Nick colours: bright enough to glow on the dark background */
+.c0 { color: #f5a623; }
+.c1 { color: #5bb8ff; }
+.c2 { color: #2dce7a; }
+.c3 { color: #ff7a59; }
+.c4 { color: #c792ea; }
+.c5 { color: #4dd0e1; }
+.c6 { color: #ffd166; }
+.c7 { color: #ff8fb1; }
+
+.people {
+  width: 210px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  padding: 12px 14px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.people-title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--room);
+}
+.people ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.people li {
+  font-weight: 500;
+}
+.you {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Input */
+.input {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.input input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: 16px var(--mono); /* 16px stops iPhones zooming in when typing */
+}
+.input input::placeholder {
+  color: var(--muted);
+}
+.input button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--room);
+  background: var(--room);
+  color: var(--bg);
+  font: 500 13px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.input button:disabled,
+.input input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--room);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Phones: the people list slides over the messages when "People" is tapped. */
+@media (max-width: 719px) {
+  .people {
+    display: none;
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(240px, 75%);
+    border-left: 1px solid var(--room);
+    box-shadow: -12px 0 24px rgba(0, 0, 0, 0.6);
+  }
+  .people.open {
+    display: block;
+  }
+}
+
+/* Wider screens: the people list is always visible, so the toggle isn't needed. */
+@media (min-width: 720px) {
+  .people-toggle {
+    display: none;
+  }
+}
+
+/* Fewer moving parts for people who asked their phone for that. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}

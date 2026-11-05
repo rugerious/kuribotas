@@ -38,9 +38,11 @@ MVP: 28–42 h.
 - **Server:** one port for HTTP and WebSocket. `GET /healthz` → `200 {"status":"ok"}`, other paths `404`; WebSocket upgrades only on `/ws`. Graceful shutdown on `SIGTERM`: chat clients get close code 1001, stragglers are force-closed after 3 s.
 - **Real-time chat:** `ws` (zero dependencies). Everyone arrives with a guest nick and can change it (unique, ignoring case); anyone creates a channel by joining it; messages, members, history and topic are per channel; `/me` actions; join, part, quit and nick events; errors go only to whoever caused them. Requests are checked for shape, then for meaning, and a database failure never kills a connection. Tested with Node's built-in WebSocket client, the same API browsers use.
 - **History (SQLite):** Node's built-in `node:sqlite` (no native module). Schema `spaces` → `channels` → `messages`, upgraded by numbered migrations tracked in `PRAGMA user_version`, each in a transaction (two so far: v2 added the author and `say`/`me`); a test upgrades a real version-1 database. WAL mode; prepared statements only (no SQL injection). A message is saved before it is broadcast; newcomers get the last 50. Data lives in `DATA_DIR` (default `./data`, `/data` in the image, mounted as a volume).
-- **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`). Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
+- **Web client:** Preact (React's API in ~4 KB) bundled by esbuild into a 22 KB script. Slash commands (`/nick`, `/join`, `/part`, `/me`, `/topic`, `/colour`, `/help`) become protocol messages; all screen state lives in one pure reducer, tested without a browser. Channel tabs with unread counts, topic bar, people list, `***` events, 24-hour timestamps. Dark theme; each channel has a colour, chosen per device. Open-licence fonts ship with the app. Messages are always rendered as text, never as HTML. Tested on two phones and two desktop browsers.
+- **Serving it:** the same server serves `web/dist` with a strict Content Security Policy (only our own scripts, styles and WebSocket; nothing from third parties) and path-traversal protection, tested with `../`, `%2e%2e` and `%2f` tricks.
+- **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`), built in two stages: the first bundles the web client with esbuild, the second holds only the server, its runtime dependencies and the built files. Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
 - **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
-- **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates.
+- **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates; npm `allowScripts` denies install scripts (esbuild's included, the build works without it), so no dependency runs code when installed.
 - **Dependency audit:** production tree clean (`npm audit --omit=dev`). One moderate, dev-only advisory (`minimatch` via ESLint) is accepted until upstream ships a fix: the patterns it parses are our own, and the suggested fix would downgrade ESLint a major version.
 
 ### Repo layout
@@ -51,8 +53,14 @@ server/            Node.js + TypeScript backend
   src/index.ts     starts it (HOST, PORT)
   src/chat.ts      WebSocket chat on /ws
   src/store.ts     SQLite: schema, migrations, messages
+  src/static.ts    serves the built web client (CSP, no path tricks)
   test/            node:test tests
-web/               web client (from phase 1)
+shared/            protocol types used by server and web
+web/               web client: Preact + esbuild
+  src/commands.ts  slash commands → protocol messages
+  src/state.ts     all screen state, one pure reducer
+  src/app.tsx      the screens
+  build.ts         bundles into web/dist (git-ignored)
 .githooks/         pre-commit hook
 tsconfig.json      shared type-check settings
 eslint.config.js   lint rules
@@ -105,6 +113,7 @@ Phone (PWA) ──HTTPS/WSS──▶ Cloudflare Tunnel ──▶ small always-on
 - **Family data never leaves the server.** No messages, names or screenshots of real chats in Git, issues, logs or this README. The database and its backups are git-ignored.
 - **No secrets in Git.** Runtime secrets live in a `0600` `.env` on the server; `.env.example` documents them.
 - **Inspired, not copied.** Features are ideas anyone can use; no names, logos, sounds, emoticons or icons from IRC clients or messengers. All art and sounds are original.
+- **Nothing from third parties in the browser.** No analytics, no CDNs, no web fonts from elsewhere; the CSP enforces it.
 - **Pinned versions, automated updates** (Dependabot), and every change through a pull request.
 
 ## Development setup
@@ -116,8 +125,10 @@ nvm use                                # use the Node version from .nvmrc
 git config core.hooksPath .githooks    # enable the pre-commit hook (once per clone)
 npm ci                                 # install exactly what package-lock.json says
 npm run check                          # type check + lint + tests
+npm run build                          # build the web client into web/dist
 npm run dev --workspace server         # run the server, restart on save
 curl http://127.0.0.1:3000/healthz     # {"status":"ok"}
+# then open http://localhost:3000 (two windows = two people)
 docker build -t kuribotas/server:dev .                          # build the image
 docker run --rm -p 127.0.0.1:3000:3000 -v kuribotas-data:/data kuribotas/server:dev   # run it, data in a volume
 ~~~

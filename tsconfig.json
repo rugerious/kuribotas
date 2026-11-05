@@ -10,7 +10,13 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["server/src", "server/test"]
+  "include": [
+    "server/src",
+    "server/test",
+    "shared"
+  ]
 }
