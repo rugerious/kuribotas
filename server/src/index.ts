@@ -13,7 +13,8 @@ mkdirSync(dataDir, { recursive: true });
 if (!existsSync(join(webDir, "index.html"))) {
   console.warn(`no web client in ${webDir}: run "npm run build" (the chat still works on /ws)`);
 }
-const app = createApp({ dbPath: join(dataDir, "kuribotas.db"), webDir });
+// The family's own sounds go in <data>/sounds (nudge.mp3, tornado.mp3); without them, the sounds made in code play.
+const app = createApp({ dbPath: join(dataDir, "kuribotas.db"), webDir, soundsDir: join(dataDir, "sounds") });
 
 app.server.listen(port, host, () => {
   console.log(`kuribotas server listening on http://${host}:${port} (WebSocket at /ws, data in ${dataDir})`);

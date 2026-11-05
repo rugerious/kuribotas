@@ -1,16 +1,56 @@
 // Kuribotas' own sounds, made in code: no audio files, nothing recorded or copied from anyone.
 // Nudge: pots falling in the kitchen, and a lid left spinning on the floor.
 // Tornado: a batucada with heavy bass that speeds up and drops into a kuduro-style beat.
+// A family server can replace either with its own files (<data>/sounds/nudge.mp3, tornado.mp3)
+// and offer extra nudges (nudge-<name>.mp3) that each device picks with /som. Those files stay
+// private, outside Git and the image, and are fetched once when sound is unlocked.
 // Browsers only allow sound after the person has touched the page once, so the first
 // tap or key press "unlocks" it; before that, nudges are silent (they still shake).
 
 let ctx: AudioContext | null = null;
 let shaper: WaveShaperNode | null = null;
+let familyLoading = false;
+const family = new Map<string, AudioBuffer>(); // "nudge", "nudge-3", "tornado"…
+let nudgeChoice: string | null = null; // what this device picked with /som (null = the default)
+
+// The nudge sounds this device can pick: the default, each extra file, and the pots made in code.
+export const DEFAULT_SOUND = "padrao";
+export const BUILT_IN_SOUND = "panelas";
+
+export function nudgeChoices(files: readonly string[]): string[] {
+  const extras = files.filter((f) => f.startsWith("nudge-")).map((f) => f.slice("nudge-".length));
+  return [DEFAULT_SOUND, ...extras, BUILT_IN_SOUND];
+}
+
+// Which sound to play for a nudge, given this device's choice and the files loaded.
+// A choice whose file has gone falls back to the default; no default file means the pots.
+export function nudgeSource(choice: string | null, files: readonly string[]): string {
+  if (choice === BUILT_IN_SOUND) return BUILT_IN_SOUND;
+  if (choice !== null && choice !== DEFAULT_SOUND && files.includes(`nudge-${choice}`)) return `nudge-${choice}`;
+  return files.includes("nudge") ? "nudge" : BUILT_IN_SOUND;
+}
+
+// How long the tornado shakes: as long as the family's tornado sound, or 2.5 s for the built-in one.
+export function tornadoSeconds(): number {
+  return family.get("tornado")?.duration ?? 2.5;
+}
+
+export function availableNudges(): string[] {
+  return nudgeChoices([...family.keys()]);
+}
+
+export function setNudgeSound(choice: string | null): void {
+  nudgeChoice = choice;
+}
 
 export function unlockSound(): void {
   try {
     ctx ??= new AudioContext();
     if (ctx.state === "suspended") void ctx.resume();
+    if (!familyLoading) {
+      familyLoading = true;
+      void loadFamilySounds(ctx);
+    }
   } catch {
     ctx = null; // no Web Audio here: nudges stay silent
   }
@@ -19,8 +59,40 @@ export function unlockSound(): void {
 export function playNudge(tornado: boolean): void {
   if (ctx === null || ctx.state !== "running") return;
   const start = ctx.currentTime + 0.03;
-  if (tornado) batucadaKuduro(ctx, start);
+  if (tornado) {
+    const own = family.get("tornado");
+    if (own !== undefined) playBuffer(ctx, own, start);
+    else batucadaKuduro(ctx, start);
+    return;
+  }
+  const source = nudgeSource(nudgeChoice, [...family.keys()]);
+  const own = family.get(source);
+  if (own !== undefined) playBuffer(ctx, own, start);
   else fallingPots(ctx, start);
+}
+
+// Asks the server which family sounds exist, then fetches only those (no 404s in the console).
+// Any failure just leaves the sounds made in code in place.
+async function loadFamilySounds(c: AudioContext): Promise<void> {
+  try {
+    const res = await fetch("/sounds/available", { cache: "no-cache" });
+    if (!res.ok) return;
+    const body = (await res.json()) as { files?: unknown };
+    const files = Array.isArray(body.files) ? body.files.filter((f): f is string => typeof f === "string") : [];
+    for (const name of files) {
+      const file = await fetch(`/sounds/${encodeURIComponent(name)}.mp3`, { cache: "no-cache" });
+      if (file.ok) family.set(name, await c.decodeAudioData(await file.arrayBuffer()));
+    }
+  } catch {
+    // offline, old server, or a file the browser can't decode: keep the built-in sounds
+  }
+}
+
+function playBuffer(c: AudioContext, buffer: AudioBuffer, at: number): void {
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  src.connect(c.destination);
+  src.start(at);
 }
 
 // Android vibrates; iPhones don't let web pages do it, so there it's only the shake.

@@ -113,3 +113,10 @@ test("/abanar and /tornado nudge someone in the open channel; /abanoes switches 
   assert.deepEqual(parseInput("/shake ON", here, "en"), { kind: "shake", on: true });
   assert.equal(parseInput("/abanoes talvez", here, "pt").kind, "error");
 });
+
+test("/som lists or picks this device's nudge sound", () => {
+  assert.deepEqual(parseInput("/som", here, "pt"), { kind: "sound" });
+  assert.deepEqual(parseInput("/som 3", here, "pt"), { kind: "sound", name: "3" });
+  assert.deepEqual(parseInput("/sound Panelas", here, "en"), { kind: "sound", name: "panelas" });
+  assert.deepEqual(parseInput("/som padrão", here, "pt"), { kind: "sound", name: "padrao" });
+});

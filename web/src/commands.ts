@@ -12,6 +12,7 @@ export type Parsed =
   | { kind: "colour"; colour?: RoomColour } // handled on this device; no colour = the next one
   | { kind: "lang"; lang: Lang } // handled on this device
   | { kind: "shake"; on: boolean } // handled on this device
+  | { kind: "sound"; name?: string } // handled on this device; no name = list the options
   | { kind: "error"; text: string }
   | { kind: "nothing" };
 
@@ -32,6 +33,7 @@ const ALIASES: Record<string, string> = {
   "/abanar": "/nudge",
   "/abanoes": "/shake",
   "/abanões": "/shake",
+  "/som": "/sound",
 };
 
 const YES = ["sim", "on", "yes"];
@@ -105,6 +107,11 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (NO.includes(answer)) return { kind: "shake", on: false };
       return usage(w.examples.shake);
     }
+    case "/sound":
+      // Accents dropped, so /som padrão and /som padrao are the same.
+      return firstWord
+        ? { kind: "sound", name: firstWord.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "") }
+        : { kind: "sound" };
     case "/lang": {
       const wanted = firstWord.toLowerCase();
       return isLang(wanted) ? { kind: "lang", lang: wanted } : usage(w.examples.lang);
