@@ -36,6 +36,9 @@ const ALIASES: Record<string, string> = {
   "/som": "/sound",
 };
 
+// "/abanar todos" nudges the whole channel (so a person can't be called "todos" and get nudged alone).
+const EVERYONE = ["todos", "all", "@todos", "@all", "*"];
+
 const YES = ["sim", "on", "yes"];
 const NO = ["nao", "não", "off", "no"];
 
@@ -98,9 +101,10 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
     }
     case "/nudge":
     case "/tornado":
-      return firstWord
-        ? send({ type: "nudge", channel, nick: firstWord, tornado: command === "/tornado" })
-        : usage(command === "/tornado" ? w.examples.tornado : w.examples.nudge);
+      if (!firstWord) return usage(command === "/tornado" ? w.examples.tornado : w.examples.nudge);
+      return EVERYONE.includes(firstWord.toLowerCase())
+        ? send({ type: "nudge", channel, everyone: true, tornado: command === "/tornado" })
+        : send({ type: "nudge", channel, nick: firstWord, tornado: command === "/tornado" });
     case "/shake": {
       const answer = firstWord.toLowerCase();
       if (YES.includes(answer)) return { kind: "shake", on: true };

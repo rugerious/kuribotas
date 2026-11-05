@@ -230,9 +230,13 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     }
 
     case "nudge": {
-      const text = msg.tornado ? w.events.tornado(msg.from, msg.to) : w.events.nudge(msg.from, msg.to);
+      const everyone = msg.to === null;
+      const text = everyone
+        ? (msg.tornado ? w.events.tornadoAll : w.events.nudgeAll)(msg.from, msg.channel)
+        : (msg.tornado ? w.events.tornado : w.events.nudge)(msg.from, msg.to ?? "");
       const next = addEvent(state, msg.channel, text, at, "info");
-      return msg.to === state.nick ? { ...next, nudged: { key: next.seq, tornado: msg.tornado } } : next;
+      const forMe = everyone ? msg.from !== state.nick : msg.to === state.nick;
+      return forMe ? { ...next, nudged: { key: next.seq, tornado: msg.tornado } } : next;
     }
 
     case "typing": {

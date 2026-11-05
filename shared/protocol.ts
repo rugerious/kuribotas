@@ -51,7 +51,8 @@ export type ClientMessage =
   | { type: "topic"; channel: string; topic: string }
   | { type: "status"; status: Status; note: string }
   | { type: "typing"; channel: string; typing: boolean } // true at most every few seconds; false when the box empties
-  | { type: "nudge"; channel: string; nick: string; tornado: boolean }; // shake someone's screen (/abanar, /tornado)
+  | { type: "nudge"; channel: string; nick: string; tornado: boolean } // shake someone's screen (/abanar, /tornado)
+  | { type: "nudge"; channel: string; everyone: true; tornado: boolean }; // the whole channel (/abanar todos)
 
 // What the server sends.
 export type ServerMessage =
@@ -64,6 +65,6 @@ export type ServerMessage =
   | { type: "topic"; channel: string; topic: string; nick: string }
   | { type: "presence"; nick: string; status: Status; note: string }
   | { type: "typing"; channel: string; nick: string; typing: boolean } // never saved; clients hide it after a few seconds
-  | { type: "nudge"; channel: string; from: string; to: string; tornado: boolean } // the whole channel sees it; only `to` shakes
+  | { type: "nudge"; channel: string; from: string; to: string | null; tornado: boolean } // only `to` shakes; null = everyone but `from`
   | ({ type: "message" } & ChatMessage)
   | { type: "error"; code: ErrorCode; detail: string; reason: string };

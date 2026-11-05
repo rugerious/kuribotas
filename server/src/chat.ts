@@ -14,6 +14,8 @@ type Member = {
   typingIn: Map<string, number>;
   nudgedAt: number[]; // when this person's recent quick nudges were sent
   tornadoAt: number | undefined; // when this person last sent a tornado
+  groupNudgeAt: number | undefined; // ...a nudge to the whole channel
+  groupTornadoAt: number | undefined; // ...a tornado to the whole channel
 };
 
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
@@ -28,6 +30,8 @@ const TYPING_MIN_INTERVAL_MS = 2000; // "is typing" passed on at most this often
 const NUDGE_BURST = 3; // quick nudges allowed...
 const NUDGE_WINDOW_MS = 10_000; // ...in this window
 const TORNADO_EVERY_MS = 60_000; // one tornado a minute: an event, not spam
+const GROUP_NUDGE_EVERY_MS = 60_000; // the whole channel: once a minute
+const GROUP_TORNADO_EVERY_MS = 300_000; // a tornado for everyone: once every 5 minutes
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
@@ -68,6 +72,8 @@ export function attachChat(server: Server, store: Store): Chat {
       typingIn: new Map(),
       nudgedAt: [],
       tornadoAt: undefined,
+      groupNudgeAt: undefined,
+      groupTornadoAt: undefined,
     };
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
@@ -193,11 +199,24 @@ export function attachChat(server: Server, store: Store): Chat {
         const channel = normaliseChannel(msg.channel);
         if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
         if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't nudge while invisible");
+        const now = Date.now();
+        if ("everyone" in msg) {
+          // Everyone in the channel shakes except the sender (invisible people too: they only receive).
+          const last = msg.tornado ? me.groupTornadoAt : me.groupNudgeAt;
+          const every = msg.tornado ? GROUP_TORNADO_EVERY_MS : GROUP_NUDGE_EVERY_MS;
+          const wait = last === undefined ? 0 : last + every - now;
+          if (wait > 0) {
+            return reject(me, msg.tornado ? "tornado_too_soon" : "nudge_too_soon", seconds(wait), "one group nudge at a time");
+          }
+          if (msg.tornado) me.groupTornadoAt = now;
+          else me.groupNudgeAt = now;
+          sendToChannel(channel, { type: "nudge", channel, from: me.nick, to: null, tornado: msg.tornado });
+          return;
+        }
         const wanted = msg.nick.trim().toLowerCase();
         // Invisible people get the same answer as nobody at all, so a nudge can't find them.
         const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
         if (target === undefined) return reject(me, "no_such_nick", msg.nick.trim(), `no ${msg.nick.trim()} in ${channel}`);
-        const now = Date.now();
         if (msg.tornado) {
           const wait = me.tornadoAt === undefined ? 0 : me.tornadoAt + TORNADO_EVERY_MS - now;
           if (wait > 0) return reject(me, "tornado_too_soon", seconds(wait), "one tornado a minute");
@@ -367,9 +386,10 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
     case "nudge": {
       const channel = str("channel");
       const nick = str("nick");
-      return channel === undefined || nick === undefined
-        ? undefined
-        : { type: "nudge", channel, nick, tornado: v.tornado === true };
+      const tornado = v.tornado === true;
+      if (channel === undefined) return undefined;
+      if (v.everyone === true) return { type: "nudge", channel, everyone: true, tornado };
+      return nick === undefined ? undefined : { type: "nudge", channel, nick, tornado };
     }
     default:
       return undefined;
