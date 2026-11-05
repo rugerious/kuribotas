@@ -1,17 +1,20 @@
 import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientMessage, ServerMessage } from "../../shared/protocol.ts";
+import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status } from "../../shared/protocol.ts";
 import type { Store } from "./store.ts";
 
-// One connected person.
-type Member = { ws: WebSocket; nick: string; channels: Set<string> };
+// One connected person. Nicks and statuses live in memory, IRC style (accounts come with invites, phase 4).
+type Member = { ws: WebSocket; nick: string; status: Status; note: string; channels: Set<string> };
 
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
+const GUEST_PREFIX = "Kamba-"; // newcomers are friends: Kamba-1, Kamba-2...
 const HISTORY_LIMIT = 50; // messages sent when joining a channel
 const MAX_TEXT_LENGTH = 2000; // characters per chat message
 const MAX_TOPIC_LENGTH = 200; // characters per topic
+const MAX_NOTE_LENGTH = 80; // characters in the line under your name
 const MAX_PAYLOAD_BYTES = 16 * 1024; // larger frames are rejected by ws (close code 1009)
 const CLOSE_GRACE_MS = 3000; // on shutdown, wait this long before force-closing clients
+const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
 const NICK_PATTERN = /^[\p{L}\p{N}_\-~*^.|[\]{}]{1,24}$/u;
@@ -42,7 +45,7 @@ export function attachChat(server: Server, store: Store): Chat {
       console.warn(`websocket error: ${err.message}`);
     });
 
-    const me: Member = { ws, nick: newGuestNick(), channels: new Set() };
+    const me: Member = { ws, nick: newGuestNick(), status: "online", note: "", channels: new Set() };
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
     run(me, () => join(me, HOME_CHANNEL));
@@ -56,10 +59,8 @@ export function attachChat(server: Server, store: Store): Chat {
 
     ws.on("close", () => {
       members.delete(me);
-      // Tell everyone who shared a channel with them, once each.
-      const others = new Set<Member>();
-      for (const channel of me.channels) for (const other of membersOf(channel)) others.add(other);
-      for (const other of others) send(other, { type: "quit", nick: me.nick });
+      if (!visible(me)) return; // they already looked gone
+      for (const other of peersOf(me)) send(other, { type: "quit", nick: me.nick });
     });
   });
 
@@ -68,19 +69,21 @@ export function attachChat(server: Server, store: Store): Chat {
       case "nick": {
         const nick = msg.nick.trim();
         if (!NICK_PATTERN.test(nick)) {
-          return reject(me, "invalid nick: use 1-24 letters, digits or _-~*^.|[]{} (no spaces)");
+          return reject(me, "invalid_nick", nick, "invalid nick: use 1-24 letters, digits or _-~*^.|[]{} (no spaces)");
         }
         if (nick === me.nick) return;
-        if (nickTaken(nick, me)) return reject(me, `nick already in use: ${nick}`);
+        if (nickTaken(nick, me)) return reject(me, "nick_taken", nick, `nick already in use: ${nick}`);
         const old = me.nick;
         me.nick = nick;
-        for (const other of members) send(other, { type: "nick", old, nick });
+        const change: ServerMessage = { type: "nick", old, nick };
+        if (visible(me)) for (const other of members) send(other, change);
+        else send(me, change); // invisible people change nick in private
         return;
       }
       case "join": {
         const channel = normaliseChannel(msg.channel);
         if (!CHANNEL_PATTERN.test(channel)) {
-          return reject(me, "invalid channel: use # and 1-32 letters, digits, _ or -");
+          return reject(me, "invalid_channel", channel, "invalid channel: use # and 1-32 letters, digits, _ or -");
         }
         if (me.channels.has(channel)) return;
         join(me, channel);
@@ -88,18 +91,21 @@ export function attachChat(server: Server, store: Store): Chat {
       }
       case "part": {
         const channel = normaliseChannel(msg.channel);
-        if (!me.channels.has(channel)) return reject(me, `you are not in ${channel}`);
-        sendToChannel(channel, { type: "part", channel, nick: me.nick }); // the leaver sees it too
+        if (!me.channels.has(channel)) return reject(me, "not_in_channel", channel, `you are not in ${channel}`);
+        const part: ServerMessage = { type: "part", channel, nick: me.nick };
+        if (visible(me)) sendToChannel(channel, part); // the leaver sees it too
+        else send(me, part);
         me.channels.delete(channel);
         return;
       }
       case "say":
       case "me": {
         const channel = normaliseChannel(msg.channel);
-        if (!me.channels.has(channel)) return reject(me, `join ${channel} first`);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
         const text = msg.text.trim();
         if (text.length === 0 || text.length > MAX_TEXT_LENGTH) return; // ignored, as before
         // Saved first: if this throws, nothing is broadcast (not saved = not delivered).
+        // Speaking while invisible is allowed: the message shows, the person stays out of the list.
         const saved = store.addMessage({
           channel,
           nick: me.nick,
@@ -112,11 +118,32 @@ export function attachChat(server: Server, store: Store): Chat {
       }
       case "topic": {
         const channel = normaliseChannel(msg.channel);
-        if (!me.channels.has(channel)) return reject(me, `join ${channel} first`);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
         const topic = msg.topic.trim(); // an empty topic clears it
-        if (topic.length > MAX_TOPIC_LENGTH) return reject(me, `topic too long (max ${MAX_TOPIC_LENGTH})`);
+        if (topic.length > MAX_TOPIC_LENGTH) {
+          return reject(me, "topic_too_long", String(MAX_TOPIC_LENGTH), `topic too long (max ${MAX_TOPIC_LENGTH})`);
+        }
         const updated = store.setTopic(channel, topic);
         sendToChannel(channel, { type: "topic", channel, topic: updated.topic, nick: me.nick });
+        return;
+      }
+      case "status": {
+        const note = msg.note.trim();
+        if (note.length > MAX_NOTE_LENGTH) {
+          return reject(me, "note_too_long", String(MAX_NOTE_LENGTH), `note too long (max ${MAX_NOTE_LENGTH})`);
+        }
+        const wasVisible = visible(me);
+        me.status = msg.status;
+        me.note = note;
+        const peers = peersOf(me);
+        // Going invisible looks exactly like leaving; coming back looks like arriving (MSN did the same).
+        if (wasVisible && !visible(me)) for (const other of peers) send(other, { type: "quit", nick: me.nick });
+        if (!wasVisible && visible(me)) {
+          for (const channel of me.channels) sendToChannel(channel, { type: "join", channel, nick: me.nick }, me);
+        }
+        const presence: ServerMessage = { type: "presence", nick: me.nick, status: me.status, note: me.note };
+        send(me, presence);
+        if (visible(me)) for (const other of peers) send(other, presence);
         return;
       }
     }
@@ -125,13 +152,15 @@ export function attachChat(server: Server, store: Store): Chat {
   // Joining creates the channel if it doesn't exist yet (anyone can create one).
   function join(me: Member, channel: string): void {
     const created = store.createChannel(channel, new Date().toISOString());
-    sendToChannel(channel, { type: "join", channel, nick: me.nick }); // the others already in it
+    if (visible(me)) sendToChannel(channel, { type: "join", channel, nick: me.nick }); // the others already in it
     me.channels.add(channel);
     send(me, {
       type: "joined",
       channel,
       topic: created.topic,
-      members: membersOf(channel).map((m) => m.nick),
+      members: membersOf(channel)
+        .filter((m) => m === me || visible(m))
+        .map(info),
       history: store.recentMessages(channel, HISTORY_LIMIT),
     });
   }
@@ -142,7 +171,7 @@ export function attachChat(server: Server, store: Store): Chat {
       action();
     } catch (err) {
       console.error(`could not handle a request: ${err instanceof Error ? err.message : String(err)}`);
-      send(me, { type: "error", reason: "something went wrong, please try again" });
+      reject(me, "internal", "", "something went wrong, please try again");
     }
   }
 
@@ -150,12 +179,12 @@ export function attachChat(server: Server, store: Store): Chat {
     let nick: string;
     do {
       guestCounter += 1;
-      nick = `Guest-${guestCounter}`;
+      nick = `${GUEST_PREFIX}${guestCounter}`;
     } while (nickTaken(nick));
     return nick;
   }
 
-  // Nicks are unique, ignoring case: "Rita" and "rita" can't both be online.
+  // Nicks are unique, ignoring case: "Rita" and "rita" can't both be online (invisible people count too).
   function nickTaken(nick: string, except?: Member): boolean {
     const wanted = nick.toLowerCase();
     for (const m of members) if (m !== except && m.nick.toLowerCase() === wanted) return true;
@@ -166,13 +195,20 @@ export function attachChat(server: Server, store: Store): Chat {
     return [...members].filter((m) => m.channels.has(channel));
   }
 
-  function sendToChannel(channel: string, msg: ServerMessage): void {
-    const data = JSON.stringify(msg);
-    for (const m of membersOf(channel)) sendRaw(m, data);
+  // Everyone who shares at least one channel with this person, once each.
+  function peersOf(me: Member): Set<Member> {
+    const peers = new Set<Member>();
+    for (const channel of me.channels) for (const m of membersOf(channel)) if (m !== me) peers.add(m);
+    return peers;
   }
 
-  function reject(me: Member, reason: string): void {
-    send(me, { type: "error", reason });
+  function sendToChannel(channel: string, msg: ServerMessage, except?: Member): void {
+    const data = JSON.stringify(msg);
+    for (const m of membersOf(channel)) if (m !== except) sendRaw(m, data);
+  }
+
+  function reject(me: Member, code: ErrorCode, detail: string, reason: string): void {
+    send(me, { type: "error", code, detail, reason });
   }
 
   return {
@@ -190,6 +226,14 @@ export function attachChat(server: Server, store: Store): Chat {
         });
       }),
   };
+}
+
+function visible(m: Member): boolean {
+  return m.status !== "invisible";
+}
+
+function info(m: Member): MemberInfo {
+  return { nick: m.nick, status: m.status, note: m.note };
 }
 
 function send(member: Member, msg: ServerMessage): void {
@@ -215,8 +259,8 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const v = value as Record<string, unknown>;
   const str = (key: string): string | undefined => {
-    const value = v[key];
-    return typeof value === "string" ? value : undefined;
+    const field = v[key];
+    return typeof field === "string" ? field : undefined;
   };
 
   switch (v.type) {
@@ -239,6 +283,11 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       const channel = str("channel");
       const topic = str("topic");
       return channel === undefined || topic === undefined ? undefined : { type: "topic", channel, topic };
+    }
+    case "status": {
+      const status = STATUSES.find((s) => s === v.status);
+      const note = str("note") ?? "";
+      return status === undefined ? undefined : { type: "status", status, note };
     }
     default:
       return undefined;
