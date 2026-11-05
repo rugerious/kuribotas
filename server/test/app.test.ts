@@ -71,6 +71,8 @@ async function arrive(): Promise<{ c: Client; nick: string; joined: Msg }> {
 
 const send = (c: Client, msg: Msg): void => c.ws.send(JSON.stringify(msg));
 
+const nicksOf = (joined: Msg): string[] => (joined.members as Msg[]).map((m) => String(m.nick));
+
 test("GET /healthz returns 200 and status ok", async () => {
   const res = await fetch(`${httpUrl}/healthz`);
   assert.equal(res.status, 200);
@@ -85,11 +87,11 @@ test("unknown path returns 404", async () => {
 test("a newcomer gets a guest nick, the channel list, and lands in #mujimbo", limits, async () => {
   const c = await connect(wsUrl);
   const welcome = await until(c, ofType("welcome"));
-  assert.match(String(welcome.nick), /^Guest-\d+$/);
+  assert.match(String(welcome.nick), /^Kamba-\d+$/);
   assert.ok((welcome.channels as Msg[]).some((ch) => ch.name === "#mujimbo"));
   const joined = await until(c, ofType("joined"));
   assert.equal(joined.channel, "#mujimbo");
-  assert.ok((joined.members as string[]).includes(String(welcome.nick)));
+  assert.ok(nicksOf(joined).includes(String(welcome.nick)));
   assert.ok(Array.isArray(joined.history));
   c.ws.close();
 });
@@ -152,7 +154,7 @@ test("joining creates a channel, and only its members see its messages", limits,
   send(a.c, { type: "join", channel: "#Futebol" }); // stored in lower case
   const joined = await until(a.c, ofType("joined"));
   assert.equal(joined.channel, "#futebol");
-  assert.deepEqual(joined.members, [a.nick]);
+  assert.deepEqual(joined.members, [{ nick: a.nick, status: "online", note: "" }]);
 
   send(a.c, { type: "say", channel: "#futebol", text: "goal!" });
   await until(a.c, (m) => m.type === "message" && m.text === "goal!");
@@ -180,7 +182,7 @@ test("a joiner is announced to the channel's members", limits, async () => {
   const announced = await until(a.c, (m) => m.type === "join" && m.channel === "#jantar");
   assert.equal(announced.nick, b.nick);
   const joined = await until(b.c, (m) => m.type === "joined" && m.channel === "#jantar");
-  assert.deepEqual([...(joined.members as string[])].sort(), [a.nick, b.nick].sort());
+  assert.deepEqual(nicksOf(joined).sort(), [a.nick, b.nick].sort());
   a.c.ws.close();
   b.c.ws.close();
 });
@@ -263,10 +265,85 @@ test("an oversized frame closes only that client; the server keeps running", lim
   a.c.ws.send("x".repeat(20 * 1024));
   assert.equal(await a.c.closed, 1009); // 1009 = message too big
   const b = await arrive();
-  assert.match(b.nick, /^Guest-\d+$/);
+  assert.match(b.nick, /^Kamba-\d+$/);
   b.c.ws.close();
 });
 
 test("WebSocket upgrades on other paths are refused", limits, async () => {
   await assert.rejects(connect(wsUrl.replace("/ws", "/nope")));
+});
+
+test("errors carry a code and a detail for the client to translate", limits, async () => {
+  const a = await arrive();
+  send(a.c, { type: "say", channel: "#nowhere", text: "hi" });
+  const err = await until(a.c, ofType("error"));
+  assert.equal(err.code, "join_first");
+  assert.equal(err.detail, "#nowhere");
+  a.c.ws.close();
+});
+
+test("a status and its note reach everyone who shares a channel, and newcomers see them", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "status", status: "busy", note: "a fingir que trabalho" });
+  const seen = await until(b.c, (m) => m.type === "presence" && m.nick === a.nick);
+  assert.deepEqual(seen, { type: "presence", nick: a.nick, status: "busy", note: "a fingir que trabalho" });
+  const mine = await until(a.c, (m) => m.type === "presence" && m.nick === a.nick);
+  assert.equal(mine.status, "busy");
+  const c = await arrive();
+  const entry = (c.joined.members as Msg[]).find((m) => m.nick === a.nick);
+  assert.deepEqual(entry, { nick: a.nick, status: "busy", note: "a fingir que trabalho" });
+  a.c.ws.close();
+  b.c.ws.close();
+  c.c.ws.close();
+});
+
+test("a note longer than 80 characters is refused; unknown statuses are ignored", limits, async () => {
+  const a = await arrive();
+  send(a.c, { type: "status", status: "away", note: "x".repeat(81) });
+  assert.equal((await until(a.c, ofType("error"))).code, "note_too_long");
+  send(a.c, { type: "status", status: "dancing", note: "" });
+  send(a.c, { type: "status", status: "away", note: "já vorto" });
+  const p = await until(a.c, ofType("presence")); // the first presence must be the valid one
+  assert.deepEqual([p.status, p.note], ["away", "já vorto"]);
+  a.c.ws.close();
+});
+
+test("going invisible looks like leaving; coming back looks like arriving", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "status", status: "invisible", note: "" });
+  await until(b.c, (m) => m.type === "quit" && m.nick === a.nick);
+  // A newcomer doesn't see the invisible person in the list...
+  const c = await arrive();
+  assert.ok(!nicksOf(c.joined).includes(a.nick));
+  // ...but the invisible person sees themselves, and can still read and speak.
+  send(a.c, { type: "join", channel: "#zongola" });
+  const own = await until(a.c, (m) => m.type === "joined" && m.channel === "#zongola");
+  assert.deepEqual(nicksOf(own), [a.nick]);
+  send(b.c, { type: "say", channel: "#mujimbo", text: "is anyone there?" });
+  await until(a.c, (m) => m.type === "message" && m.text === "is anyone there?");
+  // Back to online: the others see a join, then the presence.
+  send(a.c, { type: "status", status: "online", note: "na bardea" });
+  const back = await until(b.c, (m) => m.type === "join" && m.nick === a.nick);
+  assert.equal(back.channel, "#mujimbo");
+  const p = await until(b.c, (m) => m.type === "presence" && m.nick === a.nick);
+  assert.deepEqual([p.status, p.note], ["online", "na bardea"]);
+  a.c.ws.close();
+  b.c.ws.close();
+  c.c.ws.close();
+});
+
+test("leaving while invisible tells nobody", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "status", status: "invisible", note: "" });
+  await until(b.c, (m) => m.type === "quit" && m.nick === a.nick);
+  a.c.ws.close();
+  await a.c.closed;
+  // b's next message must be this one, not a second quit for a.
+  send(b.c, { type: "say", channel: "#mujimbo", text: "after" });
+  const next = await until(b.c, (m) => m.type !== "join" && !(m.type === "quit" && m.nick !== a.nick));
+  assert.deepEqual([next.type, next.text], ["message", "after"]);
+  b.c.ws.close();
 });

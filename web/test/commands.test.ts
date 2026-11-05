@@ -5,44 +5,44 @@ import { parseInput } from "../src/commands.ts";
 const here = "#mujimbo";
 
 test("plain text is said in the open channel", () => {
-  assert.deepEqual(parseInput("  hello  ", here), {
+  assert.deepEqual(parseInput("  hello  ", here, "en"), {
     kind: "send",
     msg: { type: "say", channel: here, text: "hello" },
   });
 });
 
 test("empty input does nothing", () => {
-  assert.deepEqual(parseInput("   ", here), { kind: "nothing" });
+  assert.deepEqual(parseInput("   ", here, "en"), { kind: "nothing" });
 });
 
 test("// sends a line that starts with /", () => {
-  assert.deepEqual(parseInput("//shrug", here), {
+  assert.deepEqual(parseInput("//shrug", here, "en"), {
     kind: "send",
     msg: { type: "say", channel: here, text: "/shrug" },
   });
 });
 
 test("/nick takes the first word", () => {
-  assert.deepEqual(parseInput("/nick ~*~Rita~*~", here), { kind: "send", msg: { type: "nick", nick: "~*~Rita~*~" } });
-  assert.deepEqual(parseInput("/NICK Rita", here), { kind: "send", msg: { type: "nick", nick: "Rita" } });
+  assert.deepEqual(parseInput("/nick ~*~Rita~*~", here, "en"), { kind: "send", msg: { type: "nick", nick: "~*~Rita~*~" } });
+  assert.deepEqual(parseInput("/NICK Rita", here, "en"), { kind: "send", msg: { type: "nick", nick: "Rita" } });
 });
 
 test("/join adds the # if it was forgotten", () => {
-  assert.deepEqual(parseInput("/join #futebol", here), { kind: "send", msg: { type: "join", channel: "#futebol" } });
-  assert.deepEqual(parseInput("/join futebol", here), { kind: "send", msg: { type: "join", channel: "#futebol" } });
+  assert.deepEqual(parseInput("/join #futebol", here, "en"), { kind: "send", msg: { type: "join", channel: "#futebol" } });
+  assert.deepEqual(parseInput("/join futebol", here, "en"), { kind: "send", msg: { type: "join", channel: "#futebol" } });
 });
 
 test("/part leaves the open channel, or the one named", () => {
-  assert.deepEqual(parseInput("/part", "#futebol"), { kind: "send", msg: { type: "part", channel: "#futebol" } });
-  assert.deepEqual(parseInput("/part #jantar", here), { kind: "send", msg: { type: "part", channel: "#jantar" } });
+  assert.deepEqual(parseInput("/part", "#futebol", "en"), { kind: "send", msg: { type: "part", channel: "#futebol" } });
+  assert.deepEqual(parseInput("/part #jantar", here, "en"), { kind: "send", msg: { type: "part", channel: "#jantar" } });
 });
 
 test("/me and /topic keep the whole rest of the line", () => {
-  assert.deepEqual(parseInput("/me sets the table", here), {
+  assert.deepEqual(parseInput("/me sets the table", here, "en"), {
     kind: "send",
     msg: { type: "me", channel: here, text: "sets the table" },
   });
-  assert.deepEqual(parseInput("/topic Sunday dinner: who brings dessert?", here), {
+  assert.deepEqual(parseInput("/topic Sunday dinner: who brings dessert?", here, "en"), {
     kind: "send",
     msg: { type: "topic", channel: here, topic: "Sunday dinner: who brings dessert?" },
   });
@@ -50,21 +50,50 @@ test("/me and /topic keep the whole rest of the line", () => {
 
 test("commands missing their argument explain how to use them", () => {
   for (const input of ["/nick", "/join", "/me", "/topic"]) {
-    const parsed = parseInput(input, here);
+    const parsed = parseInput(input, here, "en");
     assert.equal(parsed.kind, "error", input);
     assert.match(parsed.kind === "error" ? parsed.text : "", /^usage: /, input);
   }
 });
 
 test("/help is handled locally; unknown commands are explained", () => {
-  assert.deepEqual(parseInput("/help", here), { kind: "help" });
-  assert.deepEqual(parseInput("/dance", here), { kind: "error", text: "unknown command /dance — try /help" });
+  assert.deepEqual(parseInput("/help", here, "en"), { kind: "help" });
+  assert.deepEqual(parseInput("/dance", here, "en"), { kind: "error", text: "unknown command /dance — try /help" });
 });
 
 test("/colour picks a colour, or the next one; bad names are explained", () => {
-  assert.deepEqual(parseInput("/colour blue", here), { kind: "colour", colour: "blue" });
-  assert.deepEqual(parseInput("/COLOR Violet", here), { kind: "colour", colour: "violet" });
-  assert.deepEqual(parseInput("/colour", here), { kind: "colour" });
-  const bad = parseInput("/colour pink", here);
+  assert.deepEqual(parseInput("/colour blue", here, "en"), { kind: "colour", colour: "blue" });
+  assert.deepEqual(parseInput("/COLOR Violet", here, "en"), { kind: "colour", colour: "violet" });
+  assert.deepEqual(parseInput("/colour", here, "en"), { kind: "colour" });
+  const bad = parseInput("/colour pink", here, "en");
   assert.equal(bad.kind, "error");
+});
+
+test("Angolan aliases work whatever the screen language", () => {
+  assert.deepEqual(parseInput("/bazar", "#futebol", "en"), { kind: "send", msg: { type: "part", channel: "#futebol" } });
+  assert.deepEqual(parseInput("/ajuda", here, "en"), { kind: "help" });
+  assert.deepEqual(parseInput("/cor azul", here, "en"), { kind: "colour", colour: "blue" });
+  assert.deepEqual(parseInput("/topico jantar", here, "pt"), {
+    kind: "send",
+    msg: { type: "topic", channel: here, topic: "jantar" },
+  });
+});
+
+test("status commands: with your own words, or a random caption later", () => {
+  assert.deepEqual(parseInput("/biolo", here, "pt"), { kind: "status", status: "busy" });
+  assert.deepEqual(parseInput("/vorto fui buscar pão", here, "pt"), { kind: "status", status: "away", note: "fui buscar pão" });
+  assert.deepEqual(parseInput("/zongolar", here, "pt"), { kind: "status", status: "invisible" });
+  assert.deepEqual(parseInput("/online", here, "en"), { kind: "status", status: "online" });
+  assert.deepEqual(parseInput("/frase a ver a bola", here, "pt"), { kind: "note", note: "a ver a bola" });
+});
+
+test("mistakes are explained in the screen's language", () => {
+  assert.deepEqual(parseInput("/nick", here, "pt"), { kind: "error", text: "Usa assim: /nick <nome>" });
+  assert.deepEqual(parseInput("/dança", here, "pt"), { kind: "error", text: "Não conheço o comando /dança. Tenta /ajuda" });
+});
+
+test("/lingua switches this device's language; anything else explains itself", () => {
+  assert.deepEqual(parseInput("/lingua en", here, "pt"), { kind: "lang", lang: "en" });
+  assert.deepEqual(parseInput("/lang PT", here, "en"), { kind: "lang", lang: "pt" });
+  assert.deepEqual(parseInput("/lingua", here, "pt"), { kind: "error", text: "Usa assim: /lingua pt | en" });
 });

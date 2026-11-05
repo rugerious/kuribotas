@@ -6,24 +6,24 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–1 done (foundations, basic chat, web client) · next: **Phase 2 — Messenger side.** Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–1 done (foundations, basic chat, web client) · 🚧 **Phase 2 — Messenger side** (statuses done). Target: in use by the family for Christmas 2026.
 
 ## What it is
 
 From IRC: channels with topics, slash commands (`/me`, `/nick`, `/topic`, `/msg`, `/invite`), a nick list with `@` and `+`, coloured nicks, timestamps and `*** Mum joined #mujimbo`.
 
-From instant messengers: a contact list with statuses (**No mambo**, **Já bazo**, **Na bumba**, **A zongolar** — invisible), a personal message, "is typing…", private chats and the nudge that shakes the screen.
+From instant messengers: a contact list with statuses (**Na bardea**, **Já vorto**, **No biolo**, **A zongolar** — invisible), a personal message, "is typing…", private chats and the nudge that shakes the screen.
 
 New: it is a **PWA** — open an invite link, add it to the home screen, get push notifications. No app store, no passwords.
 
 ## Screenshots
 
 <p>
-  <img src="docs/screenshot-phone.png" alt="Kuribotas on a phone: dark theme, #mujimbo in amber, IRC-style lines with timestamps, nick changes and a /me action" width="280">
-  <img src="docs/screenshot-desktop.png" alt="Kuribotas on a desktop: the same chat with the people list on the right and #mujimbo switched to blue" width="560">
+  <img src="docs/screenshot-phone.png" alt="Kuribotas on a Portuguese phone: the people list open, each person with a status dot, the status name and a caption such as No biolo · a bumbar" width="280">
+  <img src="docs/screenshot-desktop.png" alt="The same chat on an English desktop: statuses shown as Busy, Be right back and Online, with the captions people chose" width="560">
 </p>
 
-*Two people chatting, made-up nicks. Each channel's colour is chosen per device (`/colour` or the dot in the topic bar).*
+*Made-up nicks. Left: a Portuguese phone with the people list open. Right: the same chat on an English desktop. Each channel's colour is chosen per device (`/colour` or the dot in the topic bar).*
 
 ## Status
 
@@ -31,7 +31,7 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 |---|---|---|---|
 | 0 | Foundations: repo, TypeScript monorepo, CI → GHCR, Dependabot | 3–4 | ✅ |
 | 1 | Basic chat: WebSocket server, channels, SQLite history, slash commands, retro UI | 7–10 | ✅ |
-| 2 | Messenger side: statuses, private chats, nudge, typing indicator | 6–9 | ⏳ |
+| 2 | Messenger side: statuses, private chats, nudge, typing indicator | 6–9 | 🚧 |
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ⏳ |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ⏳ |
 | 5 | Deploy: always-on server, Cloudflare Tunnel, backups, load test | 4–7 | ⏳ |
@@ -48,6 +48,7 @@ MVP: 28–42 h.
 - **Real-time chat:** `ws` (zero dependencies). Everyone arrives with a guest nick and can change it (unique, ignoring case); anyone creates a channel by joining it; messages, members, history and topic are per channel; `/me` actions; join, part, quit and nick events; errors go only to whoever caused them. Requests are checked for shape, then for meaning, and a database failure never kills a connection. Tested with Node's built-in WebSocket client, the same API browsers use.
 - **History (SQLite):** Node's built-in `node:sqlite` (no native module). Schema `spaces` → `channels` → `messages`, upgraded by numbered migrations tracked in `PRAGMA user_version`, each in a transaction (two so far: v2 added the author and `say`/`me`); a test upgrades a real version-1 database. WAL mode; prepared statements only (no SQL injection). A message is saved before it is broadcast; newcomers get the last 50. Data lives in `DATA_DIR` (default `./data`, `/data` in the image, mounted as a volume).
 - **Web client:** Preact (React's API in ~4 KB) bundled by esbuild into a 22 KB script. Slash commands (`/nick`, `/join`, `/part`, `/me`, `/topic`, `/colour`, `/help`) become protocol messages; all screen state lives in one pure reducer, tested without a browser. Channel tabs with unread counts, topic bar, people list, `***` events, 24-hour timestamps. Dark theme; each channel has a colour, chosen per device. Open-licence fonts ship with the app. Messages are always rendered as text, never as HTML. Tested on two phones and two desktop browsers.
+- **Statuses, MSN style, in the family's own words:** 🟢 **Na bardea**, 🟡 **Já vorto**, 🔴 **No biolo**, 👻 **A zongolar** (invisible: to everyone else it looks exactly like leaving; coming back looks like arriving). Choosing a status picks a random caption (*No biolo · a fingir que trabalho*), or you write your own line (up to 80 characters). The app speaks Angolan Portuguese by default (`/lingua en` switches a device to English); every word lives in one file, `web/src/words.ts`, so the family's jokes change without touching code. Guests arrive as `Kamba-N`. Server errors carry a code, so each screen says them in its own language.
 - **Serving it:** the same server serves `web/dist` with a strict Content Security Policy (only our own scripts, styles and WebSocket; nothing from third parties) and path-traversal protection, tested with `../`, `%2e%2e` and `%2f` tricks.
 - **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`), built in two stages: the first bundles the web client with esbuild, the second holds only the server, its runtime dependencies and the built files. Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
 - **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
@@ -68,6 +69,7 @@ shared/            protocol types used by server and web
 web/               web client: Preact + esbuild
   src/commands.ts  slash commands → protocol messages
   src/state.ts     all screen state, one pure reducer
+  src/words.ts     everything the app says (Angolan Portuguese + English)
   src/app.tsx      the screens
   build.ts         bundles into web/dist (git-ignored)
 .githooks/         pre-commit hook
@@ -91,19 +93,21 @@ WebSocket at `/ws`, JSON text frames with a `type` field. The web client turns s
 | `{"type":"say","channel":"#mujimbo","text":"…"}` | plain text | channels you have joined; 1–2000 characters |
 | `{"type":"me","channel":"#mujimbo","text":"waves"}` | `/me waves` | same rules as `say` |
 | `{"type":"topic","channel":"#mujimbo","topic":"…"}` | `/topic …` | up to 200 characters; empty clears it |
+| `{"type":"status","status":"busy","note":"…"}` | `/biolo [note]` (`/bardea`, `/vorto`, `/zongolar`) | `online`, `away`, `busy` or `invisible`; note up to 80 characters |
 
 **Server → client**
 
 | Message | When |
 |---|---|
 | `welcome` `{nick, channels}` | on connect: your guest nick and the channel list |
-| `joined` `{channel, topic, members, history}` | you joined a channel (everyone lands in `#mujimbo`); history = last 50 messages |
+| `joined` `{channel, topic, members: [{nick, status, note}], history}` | you joined a channel (everyone lands in `#mujimbo`); history = last 50 messages |
 | `join` / `part` `{channel, nick}` | someone joined or left a channel you are in |
 | `quit` `{nick}` | someone who shares a channel with you disconnected |
 | `nick` `{old, nick}` | someone changed nick |
 | `topic` `{channel, topic, nick}` | a channel's topic changed |
+| `presence` `{nick, status, note}` | someone's status or note changed (`invisible` is only ever sent to yourself) |
 | `message` `{id, channel, nick, kind, text, at}` | a `say` or `me`: saved first, then sent to the channel |
-| `error` `{reason}` | your last request was refused (only you see it) |
+| `error` `{code, detail, reason}` | your last request was refused (only you see it); the client translates `code` |
 
 Anything malformed is ignored. Frames over 16 KiB close that client with code 1009; on shutdown, clients get 1001 ("going away").
 

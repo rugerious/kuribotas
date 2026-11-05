@@ -1,4 +1,5 @@
-import type { Channel, ChatMessage, ServerMessage } from "../../shared/protocol.ts";
+import type { Channel, ChatMessage, Member, ServerMessage, Status } from "../../shared/protocol.ts";
+import { words, type Lang } from "./words.ts";
 
 // Everything on screen comes from this state, and the state only changes through reduce().
 // It is plain data and a pure function, so it is tested without a browser.
@@ -17,7 +18,7 @@ export type Line =
 export type Room = {
   name: string;
   topic: string;
-  members: string[];
+  members: Member[];
   lines: Line[];
   unread: number;
 };
@@ -25,8 +26,11 @@ export type Room = {
 export type Connection = "connecting" | "open" | "closed";
 
 export type State = {
+  lang: Lang; // which words.ts language the screen speaks
   connection: Connection;
   nick: string;
+  status: Status; // mine
+  note: string; // mine
   known: Channel[]; // all channels, from the welcome
   rooms: Room[]; // channels we're in, in the order we joined
   active: string; // the open tab
@@ -39,11 +43,15 @@ export type Action =
   | { type: "server"; msg: ServerMessage; at: string }
   | { type: "local"; text: string; tone: "info" | "error"; at: string }
   | { type: "focus"; channel: string }
-  | { type: "colour"; channel: string; colour?: RoomColour; at: string }; // no colour = the next one
+  | { type: "colour"; channel: string; colour?: RoomColour; at: string } // no colour = the next one
+  | { type: "lang"; lang: Lang; at: string };
 
 export const initialState: State = {
+  lang: "pt",
   connection: "connecting",
   nick: "",
+  status: "online",
+  note: "",
   known: [],
   rooms: [],
   active: HOME_CHANNEL,
@@ -66,7 +74,7 @@ export function reduce(state: State, action: Action): State {
     case "connection": {
       const next = { ...state, connection: action.status };
       return action.status === "closed"
-        ? addEvent(next, next.active, "Disconnected. Reload the page to reconnect.", action.at, "error")
+        ? addEvent(next, next.active, words(state.lang).events.disconnected, action.at, "error")
         : next;
     }
     case "local":
@@ -83,12 +91,21 @@ export function reduce(state: State, action: Action): State {
       const current = colourOf(state, action.channel);
       const next = action.colour ?? ROOM_COLOURS[(ROOM_COLOURS.indexOf(current) + 1) % ROOM_COLOURS.length] ?? "amber";
       const changed = { ...state, colours: { ...state.colours, [action.channel]: next } };
-      return addEvent(changed, action.channel, `${action.channel} is now ${next} (on this device)`, action.at, "info");
+      const w = words(state.lang);
+      return addEvent(changed, action.channel, w.events.colour(action.channel, w.colour[next]), action.at, "info");
+    }
+    case "lang": {
+      // Lines already on screen stay as they were; everything from now on is in the new language.
+      const switched = { ...state, lang: action.lang };
+      return addEvent(switched, switched.active, words(action.lang).events.lang, action.at, "info");
     }
   }
 }
 
 function onServer(state: State, msg: ServerMessage, at: string): State {
+  const w = words(state.lang);
+  const hasMember = (r: Room, nick: string): boolean => r.members.some((m) => m.nick === nick);
+  const without = (r: Room, nick: string): Room => ({ ...r, members: r.members.filter((m) => m.nick !== nick) });
   switch (msg.type) {
     case "welcome":
       return { ...state, nick: msg.nick, known: msg.channels };
@@ -106,51 +123,52 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       };
       if (first) {
         const others = state.known.map((c) => c.name).join(" ");
-        next = addEvent(next, msg.channel, `Welcome, ${state.nick}! Channels: ${others}. Type /help for commands.`, at, "info");
+        next = addEvent(next, msg.channel, w.events.welcome(state.nick, others), at, "info");
       }
-      next = addEvent(next, msg.channel, `You joined ${msg.channel}`, at, "info");
-      return msg.topic ? addEvent(next, msg.channel, `Topic: ${msg.topic}`, at, "info") : next;
+      next = addEvent(next, msg.channel, w.events.youJoined(msg.channel), at, "info");
+      return msg.topic ? addEvent(next, msg.channel, w.events.topicIs(msg.topic), at, "info") : next;
     }
 
     case "join": {
-      const next = updateRoom(state, msg.channel, (r) => ({ ...r, members: [...r.members, msg.nick] }));
-      return addEvent(next, msg.channel, `${msg.nick} joined ${msg.channel}`, at, "info");
+      const arrived: Member = { nick: msg.nick, status: "online", note: "" };
+      const next = updateRoom(state, msg.channel, (r) => ({ ...r, members: [...without(r, msg.nick).members, arrived] }));
+      return addEvent(next, msg.channel, w.events.joined(msg.nick, msg.channel), at, "info");
     }
 
     case "part": {
       if (msg.nick === state.nick) {
         const rooms = state.rooms.filter((r) => r.name !== msg.channel);
         const active = state.active === msg.channel ? (rooms[0]?.name ?? HOME_CHANNEL) : state.active;
-        return addEvent({ ...state, rooms, active }, active, `You left ${msg.channel}`, at, "info");
+        return addEvent({ ...state, rooms, active }, active, w.events.youLeft(msg.channel), at, "info");
       }
-      const next = updateRoom(state, msg.channel, (r) => ({ ...r, members: r.members.filter((n) => n !== msg.nick) }));
-      return addEvent(next, msg.channel, `${msg.nick} left ${msg.channel}`, at, "info");
+      const next = updateRoom(state, msg.channel, (r) => without(r, msg.nick));
+      return addEvent(next, msg.channel, w.events.left(msg.nick, msg.channel), at, "info");
     }
 
     case "quit": {
       let next = state;
-      for (const room of state.rooms.filter((r) => r.members.includes(msg.nick))) {
-        next = updateRoom(next, room.name, (r) => ({ ...r, members: r.members.filter((n) => n !== msg.nick) }));
-        next = addEvent(next, room.name, `${msg.nick} quit`, at, "info");
+      for (const room of state.rooms.filter((r) => hasMember(r, msg.nick))) {
+        next = updateRoom(next, room.name, (r) => without(r, msg.nick));
+        next = addEvent(next, room.name, w.events.quit(msg.nick), at, "info");
       }
       return next;
     }
 
     case "nick": {
       let next: State = msg.old === state.nick ? { ...state, nick: msg.nick } : state;
-      for (const room of state.rooms.filter((r) => r.members.includes(msg.old))) {
+      for (const room of state.rooms.filter((r) => hasMember(r, msg.old))) {
         next = updateRoom(next, room.name, (r) => ({
           ...r,
-          members: r.members.map((n) => (n === msg.old ? msg.nick : n)),
+          members: r.members.map((m) => (m.nick === msg.old ? { ...m, nick: msg.nick } : m)),
         }));
-        next = addEvent(next, room.name, `${msg.old} is now known as ${msg.nick}`, at, "info");
+        next = addEvent(next, room.name, w.events.nickChange(msg.old, msg.nick), at, "info");
       }
       return next;
     }
 
     case "topic": {
       const next = updateRoom(state, msg.channel, (r) => ({ ...r, topic: msg.topic }));
-      const text = msg.topic ? `${msg.nick} changed the topic to: ${msg.topic}` : `${msg.nick} cleared the topic`;
+      const text = msg.topic ? w.events.topicChanged(msg.nick, msg.topic) : w.events.topicCleared(msg.nick);
       return addEvent(next, msg.channel, text, at, "info");
     }
 
@@ -174,8 +192,25 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       };
     }
 
-    case "error":
-      return addEvent(state, state.active, msg.reason, at, "error");
+    case "presence": {
+      // Others: quietly update the people lists (MSN didn't log every status change).
+      let next: State = { ...state };
+      for (const room of state.rooms.filter((r) => hasMember(r, msg.nick))) {
+        next = updateRoom(next, room.name, (r) => ({
+          ...r,
+          members: r.members.map((m) => (m.nick === msg.nick ? { ...m, status: msg.status, note: msg.note } : m)),
+        }));
+      }
+      if (msg.nick !== state.nick) return next;
+      // Me: remember it and say it once, in the open tab.
+      next = { ...next, status: msg.status, note: msg.note };
+      return addEvent(next, next.active, w.events.nowStatus(w.status[msg.status], msg.note), at, "info");
+    }
+
+    case "error": {
+      const say = w.errors[msg.code] as ((detail: string) => string) | undefined;
+      return addEvent(state, state.active, say ? say(msg.detail) : msg.reason, at, "error");
+    }
   }
 }
 
