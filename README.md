@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phase 0 done · 🚧 **Phase 1 — Basic chat.** Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–1 done (foundations, basic chat, web client) · next: **Phase 2 — Messenger side.** Target: in use by the family for Christmas 2026.
 
 ## What it is
 
@@ -16,12 +16,21 @@ From instant messengers: a contact list with statuses (**No mambo**, **Já bazo*
 
 New: it is a **PWA** — open an invite link, add it to the home screen, get push notifications. No app store, no passwords.
 
+## Screenshots
+
+<p>
+  <img src="docs/screenshot-phone.png" alt="Kuribotas on a phone: dark theme, #mujimbo in amber, IRC-style lines with timestamps, nick changes and a /me action" width="280">
+  <img src="docs/screenshot-desktop.png" alt="Kuribotas on a desktop: the same chat with the people list on the right and #mujimbo switched to blue" width="560">
+</p>
+
+*Two people chatting, made-up nicks. Each channel's colour is chosen per device (`/colour` or the dot in the topic bar).*
+
 ## Status
 
 | # | Phase | Hours (est.) | Status |
 |---|---|---|---|
 | 0 | Foundations: repo, TypeScript monorepo, CI → GHCR, Dependabot | 3–4 | ✅ |
-| 1 | Basic chat: WebSocket server, channels, SQLite history, slash commands, retro UI | 7–10 | 🚧 |
+| 1 | Basic chat: WebSocket server, channels, SQLite history, slash commands, retro UI | 7–10 | ✅ |
 | 2 | Messenger side: statuses, private chats, nudge, typing indicator | 6–9 | ⏳ |
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ⏳ |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ⏳ |
