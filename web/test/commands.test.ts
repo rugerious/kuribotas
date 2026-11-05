@@ -108,7 +108,7 @@ test("/abanar and /tornado nudge someone in the open channel; /abanoes switches 
     msg: { type: "nudge", channel: here, nick: "Kota", tornado: true },
   });
   assert.equal(parseInput("/nudge Kota", here, "en").kind, "send");
-  assert.deepEqual(parseInput("/tornado", here, "pt"), { kind: "error", text: "Usa assim: /tornado <nick>" });
+  assert.deepEqual(parseInput("/tornado", here, "pt"), { kind: "error", text: "Usa assim: /tornado <nick> | todos" });
   assert.deepEqual(parseInput("/abanoes não", here, "pt"), { kind: "shake", on: false });
   assert.deepEqual(parseInput("/shake ON", here, "en"), { kind: "shake", on: true });
   assert.equal(parseInput("/abanoes talvez", here, "pt").kind, "error");
@@ -119,4 +119,15 @@ test("/som lists or picks this device's nudge sound", () => {
   assert.deepEqual(parseInput("/som 3", here, "pt"), { kind: "sound", name: "3" });
   assert.deepEqual(parseInput("/sound Panelas", here, "en"), { kind: "sound", name: "panelas" });
   assert.deepEqual(parseInput("/som padrão", here, "pt"), { kind: "sound", name: "padrao" });
+});
+
+test("/abanar todos and /tornado all go to the whole channel", () => {
+  assert.deepEqual(parseInput("/abanar todos", here, "pt"), {
+    kind: "send",
+    msg: { type: "nudge", channel: here, everyone: true, tornado: false },
+  });
+  assert.deepEqual(parseInput("/tornado ALL", here, "en"), {
+    kind: "send",
+    msg: { type: "nudge", channel: here, everyone: true, tornado: true },
+  });
 });

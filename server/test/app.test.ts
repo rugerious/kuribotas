@@ -453,3 +453,24 @@ test("three quick nudges, then a pause; one tornado a minute, counted apart", li
   a.c.ws.close();
   b.c.ws.close();
 });
+
+test("a group nudge shakes everyone in the channel; once a minute, group tornado every 5 minutes", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  const all = (tornado: boolean) => send(a.c, { type: "nudge", channel: "#mujimbo", everyone: true, tornado });
+  all(false);
+  const seen = await until(b.c, ofType("nudge"));
+  assert.deepEqual(seen, { type: "nudge", channel: "#mujimbo", from: a.nick, to: null, tornado: false });
+  all(false); // too soon
+  all(true);
+  all(true); // too soon
+  send(a.c, { type: "nudge", channel: "#mujimbo", nick: b.nick, tornado: true }); // a personal tornado is counted apart
+  const got: string[] = [];
+  while (got.length < 5) {
+    const m = await until(a.c, (x) => x.type === "nudge" || x.type === "error");
+    got.push(m.type === "error" ? String(m.code) : `${m.tornado === true ? "tornado" : "nudge"}→${m.to === null ? "all" : "one"}`);
+  }
+  assert.deepEqual(got, ["nudge→all", "nudge_too_soon", "tornado→all", "tornado_too_soon", "tornado→one"]);
+  a.c.ws.close();
+  b.c.ws.close();
+});

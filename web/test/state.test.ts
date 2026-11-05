@@ -253,3 +253,12 @@ test("nudge errors are translated", () => {
   );
   assert.equal(texts(pt.rooms[0]?.lines ?? []).at(-1), "*** Calma aí! Espera 7 s para abanar outra vez");
 });
+
+test("a nudge for everyone shakes everyone but the sender", () => {
+  const all: ServerMessage = { type: "nudge", channel: "#mujimbo", from: "Pai", to: null, tornado: true };
+  const s = apply(arrived(), all);
+  assert.equal(texts(s.rooms[0]?.lines ?? []).at(-1), "*** Pai sent a TORNADO to everyone in #mujimbo! 🌪️🌪️");
+  assert.deepEqual(s.nudged, { key: s.seq, tornado: true });
+  const mine = apply(arrived(), { ...all, from: "Guest-1" });
+  assert.equal(mine.nudged, null); // I sent it: no shake for me
+});
