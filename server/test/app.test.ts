@@ -62,11 +62,11 @@ async function until(c: Client, match: (m: Msg) => boolean): Promise<Msg> {
 const ofType = (type: string) => (m: Msg) => m.type === type;
 
 // Connects, waits for the welcome and for landing in #mujimbo; returns the client and its nick.
-async function arrive(): Promise<{ c: Client; nick: string; joined: Msg }> {
+async function arrive(): Promise<{ c: Client; nick: string; joined: Msg; welcome: Msg }> {
   const c = await connect(wsUrl);
   const welcome = await until(c, ofType("welcome"));
   const joined = await until(c, (m) => m.type === "joined" && m.channel === "#mujimbo");
-  return { c, nick: String(welcome.nick), joined };
+  return { c, nick: String(welcome.nick), joined, welcome };
 }
 
 const send = (c: Client, msg: Msg): void => c.ws.send(JSON.stringify(msg));
@@ -471,6 +471,95 @@ test("a group nudge shakes everyone in the channel; once a minute, group tornado
     got.push(m.type === "error" ? String(m.code) : `${m.tornado === true ? "tornado" : "nudge"}→${m.to === null ? "all" : "one"}`);
   }
   assert.deepEqual(got, ["nudge→all", "nudge_too_soon", "tornado→all", "tornado_too_soon", "tornado→one"]);
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("a DM reaches only the other person and comes back to the sender; nothing is saved", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  const c = await arrive();
+  send(a.c, { type: "msg", to: b.nick.toUpperCase(), kind: "say", text: " só para ti " });
+  const got = await until(b.c, ofType("dm"));
+  assert.deepEqual({ ...got, at: "" }, { type: "dm", from: a.nick, to: b.nick, kind: "say", text: "só para ti", at: "" });
+  assert.equal((await until(a.c, ofType("dm"))).text, "só para ti");
+  // c gets nothing: its next real message is the marker.
+  send(b.c, { type: "say", channel: "#mujimbo", text: "marker-dm" });
+  assert.equal((await nextReal(c.c)).text, "marker-dm");
+  // A newcomer's history has the marker but never the DM.
+  const d = await arrive();
+  const texts = (d.joined.history as { text: string }[]).map((m) => m.text);
+  assert.ok(texts.includes("marker-dm"));
+  assert.ok(!texts.includes("só para ti"));
+  for (const x of [a, b, c, d]) x.c.ws.close();
+});
+
+test("a DM to nobody or to an invisible person gets the same answer; invisible people may write", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "msg", to: "Ninguém", kind: "say", text: "olá" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", "Ninguém"]);
+  send(b.c, { type: "status", status: "invisible", note: "" });
+  await until(a.c, (m) => m.type === "quit" && m.nick === b.nick);
+  send(a.c, { type: "msg", to: b.nick, kind: "say", text: "estás aí?" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", b.nick]);
+  send(b.c, { type: "msg", to: a.nick, kind: "me", text: "aparece de surpresa" });
+  assert.equal((await until(a.c, ofType("dm"))).kind, "me");
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("a private channel is hidden, invite-only, and its messages are never saved", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "join", channel: "#Primos", private: true });
+  const joined = await until(a.c, (m) => m.type === "joined" && m.channel === "#primos");
+  assert.equal(joined.private, true);
+  send(a.c, { type: "say", channel: "#primos", text: "segredo" });
+  assert.equal((await until(a.c, ofType("message"))).id, 0);
+  // An outsider doesn't see it in the list and can't get in.
+  const c = await arrive();
+  assert.ok(!(c.welcome.channels as { name: string }[]).some((ch) => ch.name === "#primos"));
+  send(c.c, { type: "join", channel: "#primos" });
+  assert.deepEqual(pick(await until(c.c, ofType("error"))), ["invite_only", "#primos"]);
+  // An invite lets b in, with an empty history (nothing was saved).
+  send(a.c, { type: "invite", channel: "#primos", nick: b.nick });
+  assert.deepEqual(await until(b.c, ofType("invited")), { type: "invited", channel: "#primos", from: a.nick, to: b.nick });
+  assert.equal((await until(a.c, ofType("invited"))).to, b.nick);
+  send(b.c, { type: "join", channel: "#primos" });
+  const inside = await until(b.c, (m) => m.type === "joined" && m.channel === "#primos");
+  assert.deepEqual(inside.history, []);
+  send(a.c, { type: "invite", channel: "#primos", nick: b.nick });
+  assert.equal((await until(a.c, ofType("error"))).code, "already_in_channel");
+  for (const x of [a, b, c]) x.c.ws.close();
+});
+
+test("a private name can't take a public one; when the last member leaves, the private channel is gone", limits, async () => {
+  const a = await arrive();
+  send(a.c, { type: "join", channel: "#mujimbo2", private: false });
+  await until(a.c, (m) => m.type === "joined" && m.channel === "#mujimbo2");
+  send(a.c, { type: "join", channel: "#Mujimbo", private: true });
+  send(a.c, { type: "join", channel: "#mujimbo2x", private: true });
+  await until(a.c, (m) => m.type === "joined" && m.channel === "#mujimbo2x");
+  const b = await arrive();
+  send(b.c, { type: "join", channel: "#mujimbo2", private: true }); // already public
+  assert.deepEqual(pick(await until(b.c, ofType("error"))), ["channel_exists", "#mujimbo2"]);
+  send(a.c, { type: "part", channel: "#mujimbo2x" }); // the only member leaves: it's gone
+  await until(a.c, (m) => m.type === "part" && m.channel === "#mujimbo2x");
+  send(b.c, { type: "join", channel: "#mujimbo2x" }); // so the name is free again, as a normal channel
+  const again = await until(b.c, (m) => m.type === "joined" && m.channel === "#mujimbo2x");
+  assert.equal(again.private, false);
+  a.c.ws.close();
+  b.c.ws.close();
+});
+
+test("an invite to a public channel is only a friendly notice", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "join", channel: "#futebol" });
+  await until(a.c, (m) => m.type === "joined" && m.channel === "#futebol");
+  send(a.c, { type: "invite", channel: "#futebol", nick: b.nick });
+  assert.equal((await until(b.c, ofType("invited"))).channel, "#futebol");
   a.c.ws.close();
   b.c.ws.close();
 });

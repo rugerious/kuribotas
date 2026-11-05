@@ -25,7 +25,13 @@ export type Room = {
   lines: Line[];
   unread: number;
   typing: { nick: string; until: number }[]; // who is typing here, and until when (ms)
+  private: boolean; // a private channel 🔒, or a DM: nothing in it is saved on the server
 };
+
+// A DM's room is named after the other person (no "#"); channels always start with "#".
+export function isDm(name: string): boolean {
+  return !name.startsWith("#");
+}
 
 export type Connection = "connecting" | "open" | "closed";
 
@@ -48,6 +54,8 @@ export type Action =
   | { type: "server"; msg: ServerMessage; at: string }
   | { type: "local"; text: string; tone: "info" | "error"; at: string }
   | { type: "focus"; channel: string }
+  | { type: "openDm"; nick: string } // open (or go to) a private chat tab
+  | { type: "closeDm"; nick: string } // close a private chat tab (it isn't saved anywhere)
   | { type: "colour"; channel: string; colour?: RoomColour; at: string } // no colour = the next one
   | { type: "lang"; lang: Lang; at: string }
   | { type: "tick"; at: string }; // every second: "is typing" runs out
@@ -92,6 +100,15 @@ export function reduce(state: State, action: Action): State {
         active: action.channel,
         rooms: state.rooms.map((r) => (r.name === action.channel ? { ...r, unread: 0 } : r)),
       };
+    case "openDm": {
+      const room = state.rooms.find((r) => r.name.toLowerCase() === action.nick.toLowerCase());
+      return reduce(withDm(state, room?.name ?? action.nick), { type: "focus", channel: room?.name ?? action.nick });
+    }
+    case "closeDm": {
+      const rooms = state.rooms.filter((r) => r.name !== action.nick);
+      const active = state.active === action.nick ? (rooms[0]?.name ?? HOME_CHANNEL) : state.active;
+      return { ...state, rooms, active };
+    }
     case "server":
       return onServer(state, action.msg, action.at);
     case "colour": {
@@ -135,7 +152,15 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       const first = state.rooms.length === 0;
       let seq = state.seq;
       const lines: Line[] = msg.history.map((m) => ({ kind: "message", key: ++seq, msg: m }));
-      const room: Room = { name: msg.channel, topic: msg.topic, members: msg.members, lines, unread: 0, typing: [] };
+      const room: Room = {
+        name: msg.channel,
+        topic: msg.topic,
+        members: msg.members,
+        lines,
+        unread: 0,
+        typing: [],
+        private: msg.private,
+      };
       let next: State = {
         ...state,
         seq,
@@ -168,6 +193,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
 
     case "quit": {
       let next = state;
+      if (state.rooms.some((r) => r.name === msg.nick)) next = addEvent(next, msg.nick, w.events.quit(msg.nick), at, "info");
       for (const room of state.rooms.filter((r) => hasMember(r, msg.nick))) {
         next = updateRoom(next, room.name, (r) => without(r, msg.nick));
         next = addEvent(next, room.name, w.events.quit(msg.nick), at, "info");
@@ -177,6 +203,14 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
 
     case "nick": {
       let next: State = msg.old === state.nick ? { ...state, nick: msg.nick } : state;
+      // A private chat with them follows the new name.
+      if (state.rooms.some((r) => r.name === msg.old)) {
+        next = {
+          ...updateRoom(next, msg.old, (r) => ({ ...r, name: msg.nick })),
+          active: next.active === msg.old ? msg.nick : next.active,
+        };
+        next = addEvent(next, msg.nick, w.events.nickChange(msg.old, msg.nick), at, "info");
+      }
       for (const room of state.rooms.filter((r) => hasMember(r, msg.old))) {
         next = updateRoom(next, room.name, (r) => ({
           ...r,
@@ -212,6 +246,28 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         })),
         seq,
       };
+    }
+
+    case "dm": {
+      // The room is named after the other person; my own DMs come back to me and open the tab.
+      const other = msg.from === state.nick ? msg.to : msg.from;
+      const chat: ChatMessage = { id: 0, channel: other, nick: msg.from, kind: msg.kind, text: msg.text, at: msg.at };
+      const opened = withDm(state, other);
+      const seq = opened.seq + 1;
+      const next: State = {
+        ...updateRoom(opened, other, (r) => ({
+          ...r,
+          lines: trim([...r.lines, { kind: "message", key: seq, msg: chat }]),
+          unread: r.name === state.active || msg.from === state.nick ? r.unread : r.unread + 1,
+        })),
+        seq,
+      };
+      return msg.from === state.nick ? { ...next, active: other } : next;
+    }
+
+    case "invited": {
+      const text = msg.to === state.nick ? w.events.invitedYou(msg.from, msg.channel) : w.events.youInvited(msg.to, msg.channel);
+      return addEvent(state, state.active, text, at, "info");
     }
 
     case "presence": {
@@ -253,6 +309,13 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       return addEvent(state, state.active, say ? say(msg.detail) : msg.reason, at, "error");
     }
   }
+}
+
+// Makes sure there is a tab for a private chat with this person.
+function withDm(state: State, nick: string): State {
+  if (state.rooms.some((r) => r.name === nick)) return state;
+  const room: Room = { name: nick, topic: "", members: [], lines: [], unread: 0, typing: [], private: true };
+  return { ...state, rooms: [...state.rooms, room] };
 }
 
 function updateRoom(state: State, name: string, change: (r: Room) => Room): State {

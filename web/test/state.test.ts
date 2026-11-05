@@ -4,6 +4,7 @@ import type { Member, ServerMessage } from "../../shared/protocol.ts";
 import {
   colourOf,
   initialState,
+  isDm,
   reduce,
   ROOM_COLOURS,
   TYPING_SHOWN_MS,
@@ -40,7 +41,7 @@ function arrived(): State {
     english,
     { type: "welcome", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] },
     {
-      type: "joined",
+      type: "joined", private: false,
       channel: "#mujimbo",
       topic: "dinner",
       members: [online("Pai"), online("Guest-1")],
@@ -62,7 +63,7 @@ test("arriving shows the history, a welcome, the join and the topic", () => {
 });
 
 test("a message in another tab counts as unread until that tab is opened", () => {
-  let s = apply(arrived(), { type: "joined", channel: "#futebol", topic: "", members: [online("Guest-1")], history: [] });
+  let s = apply(arrived(), { type: "joined", private: false, channel: "#futebol", topic: "", members: [online("Guest-1")], history: [] });
   assert.equal(s.active, "#futebol"); // joining opens the new tab
   s = apply(s, msg("#mujimbo", "Pai", "jantar!", 2));
   assert.equal(s.rooms.find((r) => r.name === "#mujimbo")?.unread, 1);
@@ -98,7 +99,7 @@ test("join, part and quit keep the people list right", () => {
 });
 
 test("leaving a channel myself closes its tab and opens another", () => {
-  let s = apply(arrived(), { type: "joined", channel: "#futebol", topic: "", members: [online("Guest-1")], history: [] });
+  let s = apply(arrived(), { type: "joined", private: false, channel: "#futebol", topic: "", members: [online("Guest-1")], history: [] });
   s = apply(s, { type: "part", channel: "#futebol", nick: "Guest-1" });
   assert.deepEqual(
     s.rooms.map((r) => r.name),
@@ -163,7 +164,7 @@ test("my own status is remembered and said once, in Portuguese on a Portuguese s
   const pt = apply(
     initialState,
     { type: "welcome", nick: "Kamba-1", channels: [{ name: "#mujimbo", topic: "" }] },
-    { type: "joined", channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
+    { type: "joined", private: false, channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
     { type: "presence", nick: "Kamba-1", status: "busy", note: "a fingir que trabalho" },
   );
   assert.equal(pt.status, "busy");
@@ -175,7 +176,7 @@ test("server errors are translated from their code", () => {
   const pt = apply(
     initialState,
     { type: "welcome", nick: "Kamba-1", channels: [] },
-    { type: "joined", channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
+    { type: "joined", private: false, channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
     { type: "error", code: "join_first", detail: "#futebol", reason: "join #futebol first" },
   );
   assert.equal(texts(pt.rooms[0]?.lines ?? []).at(-1), "*** Entra primeiro no #futebol (/join #futebol)");
@@ -248,7 +249,7 @@ test("nudge errors are translated", () => {
   const pt = apply(
     initialState,
     { type: "welcome", nick: "Kamba-1", channels: [] },
-    { type: "joined", channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
+    { type: "joined", private: false, channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
     { type: "error", code: "nudge_too_soon", detail: "7", reason: "too many nudges" },
   );
   assert.equal(texts(pt.rooms[0]?.lines ?? []).at(-1), "*** Calma aí! Espera 7 s para abanar outra vez");
@@ -261,4 +262,55 @@ test("a nudge for everyone shakes everyone but the sender", () => {
   assert.deepEqual(s.nudged, { key: s.seq, tornado: true });
   const mine = apply(arrived(), { ...all, from: "Guest-1" });
   assert.equal(mine.nudged, null); // I sent it: no shake for me
+});
+
+const dm = (from: string, to: string, text: string): ServerMessage => ({ type: "dm", from, to, kind: "say", text, at });
+
+test("a DM opens a tab named after the other person; mine opens it and focuses it", () => {
+  const s = apply(arrived(), dm("Pai", "Guest-1", "vem jantar"));
+  assert.deepEqual(
+    s.rooms.map((r) => r.name),
+    ["#mujimbo", "Pai"],
+  );
+  assert.equal(s.active, "#mujimbo"); // someone else's DM doesn't steal the screen
+  assert.equal(s.rooms[1]?.unread, 1);
+  assert.equal(isDm("Pai"), true);
+  assert.deepEqual(texts(s.rooms[1]?.lines ?? []), ["<Pai> vem jantar"]);
+  const mine = apply(s, dm("Guest-1", "Pai", "já vou"));
+  assert.equal(mine.active, "Pai");
+  assert.deepEqual(texts(mine.rooms[1]?.lines ?? []), ["<Pai> vem jantar", "<Guest-1> já vou"]);
+});
+
+test("opening and closing a private chat; it follows a nick change and says when they leave", () => {
+  let s = reduce(arrived(), { type: "openDm", nick: "Pai" });
+  assert.equal(s.active, "Pai");
+  s = apply(s, { type: "nick", old: "Pai", nick: "Kota" });
+  assert.equal(s.active, "Kota");
+  s = apply(s, { type: "quit", nick: "Kota" });
+  assert.equal(texts(s.rooms.find((r) => r.name === "Kota")?.lines ?? []).at(-1), "*** Kota quit");
+  s = reduce(s, { type: "closeDm", nick: "Kota" });
+  assert.deepEqual(
+    s.rooms.map((r) => r.name),
+    ["#mujimbo"],
+  );
+  assert.equal(s.active, "#mujimbo");
+});
+
+test("a private channel is marked, and invites are shown to both sides", () => {
+  let s = apply(arrived(), {
+    type: "joined",
+    private: true,
+    channel: "#primos",
+    topic: "",
+    members: [online("Guest-1")],
+    history: [],
+  });
+  assert.equal(s.rooms.find((r) => r.name === "#primos")?.private, true);
+  s = apply(s, { type: "invited", channel: "#primos", from: "Guest-1", to: "Mãe" });
+  assert.equal(texts(s.rooms.find((r) => r.name === "#primos")?.lines ?? []).at(-1), "*** You invited Mãe to #primos");
+  s = apply(s, { type: "invited", channel: "#bula", from: "Pai", to: "Guest-1" });
+  assert.equal(
+    texts(s.rooms.find((r) => r.name === "#primos")?.lines ?? []).at(-1),
+    "*** Pai invited you to #bula 🔒 Type /join #bula to go in",
+  );
 });

@@ -298,6 +298,12 @@ body::after {
 .person-nick {
   font-weight: 500;
 }
+.nudge.dm {
+  margin-left: auto;
+}
+.nudge.dm + .nudge {
+  margin-left: 4px;
+}
 .nudge {
   margin-left: auto;
   min-width: 36px;

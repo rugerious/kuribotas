@@ -1,5 +1,5 @@
 import type { ClientMessage, Status } from "../../shared/protocol.ts";
-import { ROOM_COLOURS, type RoomColour } from "./state.ts";
+import { isDm, ROOM_COLOURS, type RoomColour } from "./state.ts";
 import { isLang, words, type Lang } from "./words.ts";
 
 // What the input box means: a protocol message to send, something handled on this device,
@@ -13,6 +13,8 @@ export type Parsed =
   | { kind: "lang"; lang: Lang } // handled on this device
   | { kind: "shake"; on: boolean } // handled on this device
   | { kind: "sound"; name?: string } // handled on this device; no name = list the options
+  | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
+  | { kind: "closeDm"; nick: string } // close a private chat tab
   | { kind: "error"; text: string }
   | { kind: "nothing" };
 
@@ -34,7 +36,14 @@ const ALIASES: Record<string, string> = {
   "/abanoes": "/shake",
   "/abanões": "/shake",
   "/som": "/sound",
+  "/m": "/msg",
+  "/query": "/msg",
+  "/convidar": "/invite",
+  "/privado": "/private",
 };
+
+// In a private chat these make no sense (they belong to channels).
+const CHANNEL_ONLY = ["/topic", "/nudge", "/tornado", "/invite"];
 
 // "/abanar todos" nudges the whole channel (so a person can't be called "todos" and get nudged alone).
 const EVERYONE = ["todos", "all", "@todos", "@all", "*"];
@@ -59,10 +68,10 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
   const line = input.trim();
   if (line === "") return { kind: "nothing" };
 
-  // Plain text, or "//" to send a line that starts with "/".
+  // Plain text, or "//" to send a line that starts with "/". In a private chat it goes to that person.
   if (!line.startsWith("/") || line.startsWith("//")) {
     const text = line.startsWith("//") ? line.slice(1) : line;
-    return send({ type: "say", channel, text });
+    return isDm(channel) ? send({ type: "msg", to: channel, kind: "say", text }) : send({ type: "say", channel, text });
   }
 
   const space = line.indexOf(" ");
@@ -71,6 +80,14 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
   const rest = space === -1 ? "" : line.slice(space + 1).trim();
   const firstWord = rest.split(/\s+/)[0] ?? "";
   const usage = (example: string): Parsed => ({ kind: "error", text: w.usage(example) });
+
+  if (isDm(channel)) {
+    if (command === "/me") return rest ? send({ type: "msg", to: channel, kind: "me", text: rest }) : usage(w.examples.me);
+    if (command === "/part" && !firstWord) return { kind: "closeDm", nick: channel };
+    if (CHANNEL_ONLY.includes(command) && !(command === "/invite" && rest.split(/\s+/)[1])) {
+      return { kind: "error", text: w.channelsOnly };
+    }
+  }
 
   const status = STATUS_COMMANDS[command];
   if (status !== undefined) return rest ? { kind: "status", status, note: rest } : { kind: "status", status };
@@ -111,6 +128,17 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (NO.includes(answer)) return { kind: "shake", on: false };
       return usage(w.examples.shake);
     }
+    case "/msg": {
+      if (!firstWord) return usage(w.examples.msg);
+      const text = rest.slice(firstWord.length).trim();
+      return text ? send({ type: "msg", to: firstWord, kind: "say", text }) : { kind: "openDm", nick: firstWord };
+    }
+    case "/invite": {
+      const where = rest.split(/\s+/)[1];
+      return firstWord ? send({ type: "invite", channel: where ? withHash(where) : channel, nick: firstWord }) : usage(w.examples.invite);
+    }
+    case "/private":
+      return firstWord ? send({ type: "join", channel: withHash(firstWord), private: true }) : usage(w.examples.private);
     case "/sound":
       // Accents dropped, so /som padrão and /som padrao are the same.
       return firstWord

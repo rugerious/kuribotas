@@ -131,3 +131,34 @@ test("/abanar todos and /tornado all go to the whole channel", () => {
     msg: { type: "nudge", channel: here, everyone: true, tornado: true },
   });
 });
+
+test("/msg sends a DM, or just opens the tab; in a DM tab, text and /me go to that person", () => {
+  assert.deepEqual(parseInput("/msg Kota vem jantar", here, "pt"), {
+    kind: "send",
+    msg: { type: "msg", to: "Kota", kind: "say", text: "vem jantar" },
+  });
+  assert.deepEqual(parseInput("/msg Kota", here, "pt"), { kind: "openDm", nick: "Kota" });
+  assert.deepEqual(parseInput("olá", "Kota", "pt"), { kind: "send", msg: { type: "msg", to: "Kota", kind: "say", text: "olá" } });
+  assert.deepEqual(parseInput("/me acena", "Kota", "pt"), {
+    kind: "send",
+    msg: { type: "msg", to: "Kota", kind: "me", text: "acena" },
+  });
+  assert.deepEqual(parseInput("/bazar", "Kota", "pt"), { kind: "closeDm", nick: "Kota" });
+  assert.deepEqual(parseInput("/abanar Kota", "Kota", "pt"), { kind: "error", text: "Isso é só nos canais (aqui é conversa privada)" });
+});
+
+test("/privado makes a private channel; /invite lets someone in (here, or a channel named)", () => {
+  assert.deepEqual(parseInput("/privado primos", here, "pt"), {
+    kind: "send",
+    msg: { type: "join", channel: "#primos", private: true },
+  });
+  assert.deepEqual(parseInput("/invite Kota", "#primos", "pt"), {
+    kind: "send",
+    msg: { type: "invite", channel: "#primos", nick: "Kota" },
+  });
+  assert.deepEqual(parseInput("/convidar Kota #primos", "Mãe", "pt"), {
+    kind: "send",
+    msg: { type: "invite", channel: "#primos", nick: "Kota" },
+  });
+  assert.equal(parseInput("/invite Kota", "Mãe", "pt").kind, "error"); // in a DM, say which channel
+});
