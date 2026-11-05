@@ -41,9 +41,14 @@ const CHANNEL_PATTERN = /^#[\p{L}\p{N}_-]{1,32}$/u;
 
 export type Chat = { close: () => Promise<void> };
 
+// A private channel lives in memory until its last member leaves: no row in the database, no saved
+// messages, hidden from the channel list. Only invited connections may join (accounts come in phase 4).
+type PrivateChannel = { topic: string; invited: Set<Member> };
+
 export function attachChat(server: Server, store: Store): Chat {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const members = new Set<Member>();
+  const privates = new Map<string, PrivateChannel>();
   let guestCounter = 0;
 
   // Only /ws may upgrade to a WebSocket; anything else is refused.
@@ -87,9 +92,12 @@ export function attachChat(server: Server, store: Store): Chat {
     });
 
     ws.on("close", () => {
+      const peers = peersOf(me);
       members.delete(me);
+      for (const channel of me.channels) forgetPrivate(channel, me);
+      for (const p of privates.values()) p.invited.delete(me);
       if (!visible(me)) return; // they already looked gone
-      for (const other of peersOf(me)) send(other, { type: "quit", nick: me.nick });
+      for (const other of peers) send(other, { type: "quit", nick: me.nick });
     });
   });
 
@@ -115,7 +123,42 @@ export function attachChat(server: Server, store: Store): Chat {
           return reject(me, "invalid_channel", channel, "invalid channel: use # and 1-32 letters, digits, _ or -");
         }
         if (me.channels.has(channel)) return;
+        const secret = privates.get(channel);
+        if (msg.private === true && secret === undefined) {
+          if (store.listChannels().some((c) => c.name === channel)) {
+            return reject(me, "channel_exists", channel, `${channel} is already a public channel`);
+          }
+          privates.set(channel, { topic: "", invited: new Set([me]) });
+        } else if (secret !== undefined && !secret.invited.has(me)) {
+          return reject(me, "invite_only", channel, `${channel} is private: ask a member to /invite you`);
+        }
         join(me, channel);
+        return;
+      }
+      case "invite": {
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        const target = findVisible(msg.nick, me);
+        if (target === undefined) return reject(me, "no_such_nick", msg.nick.trim(), `nobody called ${msg.nick.trim()}`);
+        if (target.channels.has(channel)) {
+          return reject(me, "already_in_channel", target.nick, `${target.nick} is already in ${channel}`);
+        }
+        privates.get(channel)?.invited.add(target); // a public channel needs no ticket: the invite is just a nudge to come
+        const invited: ServerMessage = { type: "invited", channel, from: me.nick, to: target.nick };
+        send(target, invited);
+        if (target !== me) send(me, invited);
+        return;
+      }
+      case "msg": {
+        // Not saved, not logged: it goes to the other person (and back to the sender) and nowhere else.
+        // Invisible people can't be found, but may write to someone (that is their choice to show up).
+        const text = msg.text.trim();
+        if (text.length === 0 || text.length > MAX_TEXT_LENGTH) return;
+        const target = findVisible(msg.to, me);
+        if (target === undefined) return reject(me, "no_such_nick", msg.to.trim(), `nobody called ${msg.to.trim()}`);
+        const dm: ServerMessage = { type: "dm", from: me.nick, to: target.nick, kind: msg.kind, text, at: new Date().toISOString() };
+        send(target, dm);
+        if (target !== me) send(me, dm);
         return;
       }
       case "part": {
@@ -126,6 +169,7 @@ export function attachChat(server: Server, store: Store): Chat {
         else send(me, part);
         me.channels.delete(channel);
         me.typingIn.delete(channel);
+        forgetPrivate(channel, me);
         return;
       }
       case "say":
@@ -136,13 +180,9 @@ export function attachChat(server: Server, store: Store): Chat {
         if (text.length === 0 || text.length > MAX_TEXT_LENGTH) return; // ignored, as before
         // Saved first: if this throws, nothing is broadcast (not saved = not delivered).
         // Speaking while invisible is allowed: the message shows, the person stays out of the list.
-        const saved = store.addMessage({
-          channel,
-          nick: me.nick,
-          kind: msg.type,
-          text,
-          at: new Date().toISOString(),
-        });
+        // Private channels are never saved (until accounts): their messages get id 0.
+        const said = { channel, nick: me.nick, kind: msg.type, text, at: new Date().toISOString() };
+        const saved = privates.has(channel) ? { id: 0, ...said } : store.addMessage(said);
         me.typingIn.delete(channel); // the others clear "is typing" when the message arrives
         sendToChannel(channel, { type: "message", ...saved });
         return;
@@ -154,8 +194,10 @@ export function attachChat(server: Server, store: Store): Chat {
         if (topic.length > MAX_TOPIC_LENGTH) {
           return reject(me, "topic_too_long", String(MAX_TOPIC_LENGTH), `topic too long (max ${MAX_TOPIC_LENGTH})`);
         }
-        const updated = store.setTopic(channel, topic);
-        sendToChannel(channel, { type: "topic", channel, topic: updated.topic, nick: me.nick });
+        const secret = privates.get(channel);
+        if (secret !== undefined) secret.topic = topic;
+        const updated = secret === undefined ? store.setTopic(channel, topic).topic : topic;
+        sendToChannel(channel, { type: "topic", channel, topic: updated, nick: me.nick });
         return;
       }
       case "status": {
@@ -236,19 +278,36 @@ export function attachChat(server: Server, store: Store): Chat {
   }
 
   // Joining creates the channel if it doesn't exist yet (anyone can create one).
+  // Private channels were checked and created by the caller; they have no row and no history.
   function join(me: Member, channel: string): void {
-    const created = store.createChannel(channel, new Date().toISOString());
+    const secret = privates.get(channel);
+    const topic = secret?.topic ?? store.createChannel(channel, new Date().toISOString()).topic;
     if (visible(me)) sendToChannel(channel, { type: "join", channel, nick: me.nick }); // the others already in it
     me.channels.add(channel);
     send(me, {
       type: "joined",
       channel,
-      topic: created.topic,
+      topic,
       members: membersOf(channel)
         .filter((m) => m === me || visible(m))
         .map(info),
-      history: store.recentMessages(channel, HISTORY_LIMIT),
+      history: secret === undefined ? store.recentMessages(channel, HISTORY_LIMIT) : [],
+      private: secret !== undefined,
     });
+  }
+
+  // When the last member leaves a private channel, it is gone: name, topic and invites.
+  function forgetPrivate(channel: string, leaving: Member): void {
+    const secret = privates.get(channel);
+    if (secret === undefined) return;
+    secret.invited.delete(leaving); // leaving means asking again to come back
+    if (membersOf(channel).every((m) => m === leaving)) privates.delete(channel);
+  }
+
+  // Someone online by nick (any case). Invisible people are not found, except by themselves.
+  function findVisible(nick: string, asking: Member): Member | undefined {
+    const wanted = nick.trim().toLowerCase();
+    return [...members].find((m) => m.nick.toLowerCase() === wanted && (m === asking || visible(m)));
   }
 
   // A failing store must never crash the server or kill the connection.
@@ -358,10 +417,24 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       const nick = str("nick");
       return nick === undefined ? undefined : { type: "nick", nick };
     }
-    case "join":
+    case "join": {
+      const channel = str("channel");
+      return channel === undefined ? undefined : { type: "join", channel, private: v.private === true };
+    }
     case "part": {
       const channel = str("channel");
-      return channel === undefined ? undefined : { type: v.type, channel };
+      return channel === undefined ? undefined : { type: "part", channel };
+    }
+    case "invite": {
+      const channel = str("channel");
+      const nick = str("nick");
+      return channel === undefined || nick === undefined ? undefined : { type: "invite", channel, nick };
+    }
+    case "msg": {
+      const to = str("to");
+      const text = str("text");
+      const kind = v.kind === "me" ? "me" : "say";
+      return to === undefined || text === undefined ? undefined : { type: "msg", to, kind, text };
     }
     case "say":
     case "me": {

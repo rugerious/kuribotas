@@ -38,13 +38,16 @@ export type ErrorCode =
   | "nudge_too_soon" // detail = seconds to wait
   | "tornado_too_soon" // detail = seconds to wait
   | "invisible_no_nudge" // nudging would give you away
+  | "invite_only" // a private channel: ask a member for /invite
+  | "channel_exists" // /privado on a name that is already a public channel
+  | "already_in_channel" // /invite for someone who is already there
   | "internal";
 
 // What a client may send. The web UI turns "/nick Rita", "/join #futebol", "/me waves",
 // "/topic ...", "/part" and "/biolo" into these; the server never parses typed text.
 export type ClientMessage =
   | { type: "nick"; nick: string }
-  | { type: "join"; channel: string }
+  | { type: "join"; channel: string; private?: boolean } // private: create it invite-only (/privado #primos)
   | { type: "part"; channel: string }
   | { type: "say"; channel: string; text: string }
   | { type: "me"; channel: string; text: string }
@@ -52,12 +55,14 @@ export type ClientMessage =
   | { type: "status"; status: Status; note: string }
   | { type: "typing"; channel: string; typing: boolean } // true at most every few seconds; false when the box empties
   | { type: "nudge"; channel: string; nick: string; tornado: boolean } // shake someone's screen (/abanar, /tornado)
-  | { type: "nudge"; channel: string; everyone: true; tornado: boolean }; // the whole channel (/abanar todos)
+  | { type: "nudge"; channel: string; everyone: true; tornado: boolean } // the whole channel (/abanar todos)
+  | { type: "msg"; to: string; kind: MessageKind; text: string } // a private message (/msg Kota olá)
+  | { type: "invite"; channel: string; nick: string }; // let someone into a private channel (/invite Kota)
 
 // What the server sends.
 export type ServerMessage =
   | { type: "welcome"; nick: string; channels: Channel[] }
-  | { type: "joined"; channel: string; topic: string; members: Member[]; history: ChatMessage[] }
+  | { type: "joined"; channel: string; topic: string; members: Member[]; history: ChatMessage[]; private: boolean }
   | { type: "join"; channel: string; nick: string } // arrives as online with no note; a presence may follow
   | { type: "part"; channel: string; nick: string }
   | { type: "quit"; nick: string }
@@ -66,5 +71,9 @@ export type ServerMessage =
   | { type: "presence"; nick: string; status: Status; note: string }
   | { type: "typing"; channel: string; nick: string; typing: boolean } // never saved; clients hide it after a few seconds
   | { type: "nudge"; channel: string; from: string; to: string | null; tornado: boolean } // only `to` shakes; null = everyone but `from`
-  | ({ type: "message" } & ChatMessage)
+  | ({ type: "message" } & ChatMessage) // in a private channel: not saved, id 0
+  // Until accounts (phase 4) anyone can take a free nick, so nothing private is saved: DMs and
+  // private channels live in memory only, and reach only people online right now.
+  | { type: "dm"; from: string; to: string; kind: MessageKind; text: string; at: string } // to both sides
+  | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "error"; code: ErrorCode; detail: string; reason: string };

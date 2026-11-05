@@ -4,6 +4,7 @@ import { parseInput } from "./commands.ts";
 import {
   colourOf,
   initialState,
+  isDm,
   reduce,
   ROOM_COLOURS,
   typingIn,
@@ -211,6 +212,10 @@ export function App() {
         saveShake(parsed.on);
         setShakeOn(parsed.on);
         return dispatch({ type: "local", text: w.events.shake(parsed.on), tone: "info", at: now() });
+      case "openDm":
+        return dispatch({ type: "openDm", nick: parsed.nick });
+      case "closeDm":
+        return dispatch({ type: "closeDm", nick: parsed.nick });
       case "sound": {
         const options = availableNudges();
         const say = (text: string, tone: "info" | "error" = "info") => dispatch({ type: "local", text, tone, at: now() });
@@ -230,7 +235,9 @@ export function App() {
   };
 
   // Invisible people don't say they're typing (the server would drop it anyway).
+  // "is typing" is only for channels for now (private chats: later).
   const typing = (channel: string, active: boolean): void => {
+    if (isDm(channel)) return;
     if (state.status !== "invisible" || !active) send({ type: "typing", channel, typing: active });
   };
 
@@ -278,7 +285,7 @@ export function App() {
             aria-current={r.name === state.active ? "page" : undefined}
             onClick={() => dispatch({ type: "focus", channel: r.name })}
           >
-            {r.name}
+            {isDm(r.name) ? `💬 ${r.name}` : r.private ? `🔒 ${r.name}` : r.name}
             {r.unread > 0 && <span class="badge">{r.unread}</span>}
           </button>
         ))}
@@ -293,29 +300,37 @@ export function App() {
             title={w.ui.changeColour(room.name, w.colour[colourOf(state, room.name)])}
             onClick={() => dispatch({ type: "colour", channel: room.name, at: now() })}
           />
-          <span class="topic-text">
-            <span class="label">{w.ui.topic}</span> {room.topic || w.ui.noTopic}
-          </span>
-          <button
-            type="button"
-            class="people-toggle"
-            aria-expanded={showPeople}
-            onClick={() => setShowPeople(!showPeople)}
-          >
-            {w.ui.people(room.members.length)}
-          </button>
+          {isDm(room.name) ? (
+            <span class="topic-text">{w.ui.privateChat(room.name)}</span>
+          ) : (
+            <>
+              <span class="topic-text">
+                <span class="label">{w.ui.topic}</span> {room.topic || w.ui.noTopic}
+                {room.private && <span class="private-note"> · {w.ui.privateChannel}</span>}
+              </span>
+              <button
+                type="button"
+                class="people-toggle"
+                aria-expanded={showPeople}
+                onClick={() => setShowPeople(!showPeople)}
+              >
+                {w.ui.people(room.members.length)}
+              </button>
+            </>
+          )}
         </div>
       )}
 
       <div class="body">
         <Log lines={room?.lines ?? []} />
-        {room && (
+        {room && !isDm(room.name) && (
           <People
             room={room}
             me={state.nick}
             open={showPeople}
             canNudge={online}
             onNudge={(nick) => send({ type: "nudge", channel: room.name, nick, tornado: false })}
+            onDm={(nick) => dispatch({ type: "openDm", nick })}
             w={w}
           />
         )}
@@ -372,6 +387,7 @@ function People({
   open,
   canNudge,
   onNudge,
+  onDm,
   w,
 }: {
   room: Room;
@@ -379,6 +395,7 @@ function People({
   open: boolean;
   canNudge: boolean;
   onNudge: (nick: string) => void;
+  onDm: (nick: string) => void;
   w: Words;
 }) {
   const sorted = [...room.members].sort((a, b) => a.nick.localeCompare(b.nick));
@@ -387,7 +404,15 @@ function People({
       <h2 class="people-title">{room.name}</h2>
       <ul>
         {sorted.map((m) => (
-          <PersonRow key={m.nick} member={m} isMe={m.nick === me} canNudge={canNudge} onNudge={onNudge} w={w} />
+          <PersonRow
+            key={m.nick}
+            member={m}
+            isMe={m.nick === me}
+            canNudge={canNudge}
+            onNudge={onNudge}
+            onDm={onDm}
+            w={w}
+          />
         ))}
       </ul>
     </aside>
@@ -399,12 +424,14 @@ function PersonRow({
   isMe,
   canNudge,
   onNudge,
+  onDm,
   w,
 }: {
   member: Member;
   isMe: boolean;
   canNudge: boolean;
   onNudge: (nick: string) => void;
+  onDm: (nick: string) => void;
   w: Words;
 }) {
   return (
@@ -413,6 +440,17 @@ function PersonRow({
         <span class={`dot st-${member.status}`} aria-hidden="true" />
         <span class={`person-nick ${nickClass(member.nick)}`}>{member.nick}</span>
         {isMe && <span class="you"> {w.ui.you}</span>}
+        {!isMe && (
+          <button
+            type="button"
+            class="nudge dm"
+            aria-label={w.ui.dm(member.nick)}
+            title={w.ui.dm(member.nick)}
+            onClick={() => onDm(member.nick)}
+          >
+            💬
+          </button>
+        )}
         {!isMe && (
           <button
             type="button"
