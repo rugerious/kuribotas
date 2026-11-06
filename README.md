@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–1 done (foundations, basic chat, web client) · 🚧 **Phase 2 — Messenger side** (statuses, "is typing…", the nudge and private chats done). Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–2 done (foundations, basic chat, web client, the Messenger side) · next: **Phase 3 — phone without effort** (PWA, push, reconnection). Target: in use by the family for Christmas 2026.
 
 ## What it is
 
@@ -19,11 +19,11 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 ## Screenshots
 
 <p>
-  <img src="docs/screenshot-phone.png" alt="Kuribotas on a Portuguese phone: the people list open, each person with a status dot, the status name and a caption such as No biolo · a bumbar" width="280">
-  <img src="docs/screenshot-desktop.png" alt="The same chat on an English desktop: statuses shown as Busy, Be right back and Online, with the captions people chose" width="560">
+  <img src="docs/screenshot-phone.png" alt="Kuribotas on a Portuguese phone: a wooden spoon lands with a big TOC! over the chat, tabs for #mujimbo, the private channel #primos and a private chat with Mais_Velho, and Kamba está a escrever… above the message box" width="280">
+  <img src="docs/screenshot-desktop.png" alt="The same chat on an English desktop: the people list with statuses, captions and buttons for a private chat, a nudge and a tornado; the family emoji bar open; Estraga_Lar is typing…" width="560">
 </p>
 
-*Made-up nicks. Left: a Portuguese phone with the people list open. Right: the same chat on an English desktop. Each channel's colour is chosen per device (`/colour` or the dot in the topic bar).*
+*Made-up nicks and messages. Left: a Portuguese phone at the moment the Maria das Dores lands (`/mariadasdores Kota`), with a 🔒 private channel and a 💬 private chat open. Right: the same chat on an English desktop, with the people list (💬 📳 🌪️ for each person) and the family emoji bar.*
 
 ## Status
 
@@ -31,9 +31,10 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 |---|---|---|---|
 | 0 | Foundations: repo, TypeScript monorepo, CI → GHCR, Dependabot | 3–4 | ✅ |
 | 1 | Basic chat: WebSocket server, channels, SQLite history, slash commands, retro UI | 7–10 | ✅ |
-| 2 | Messenger side: statuses, private chats, nudge, typing indicator | 6–9 | 🚧 |
+| 2 | Messenger side: statuses, private chats, nudge and tornado, typing, family sounds, the arsenal (chinela, vassoura, Maria das Dores, batuque), emoji bar | 6–9 | ✅ (~7 h) |
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ⏳ |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ⏳ |
+| 4b | Fun after accounts: stickers (family packs + our catchphrase pack), `/roll`, `/8ball`, December `/neve`; saved history for private chats | 2–4 | ⏳ |
 | 5 | Deploy: always-on server, Cloudflare Tunnel, backups, load test | 4–7 | ⏳ |
 | 6 | Write-up | 2–3 | ⏳ |
 
