@@ -7,6 +7,7 @@ import type { Store } from "./store.ts";
 // `typingIn`: channel -> when we last passed on "is typing" (to rate-limit it, and to know a stop is due).
 type Member = {
   ws: WebSocket;
+  alive: boolean; // answered the last heartbeat ping
   nick: string;
   status: Status;
   note: string;
@@ -28,6 +29,9 @@ const MAX_TOPIC_LENGTH = 200; // characters per topic
 const MAX_NOTE_LENGTH = 80; // characters in the line under your name
 const MAX_PAYLOAD_BYTES = 16 * 1024; // larger frames are rejected by ws (close code 1009)
 const CLOSE_GRACE_MS = 3000; // on shutdown, wait this long before force-closing clients
+// A phone that locks or loses signal can leave a connection that looks open but is dead, holding its
+// nick. Every heartbeat each connection is pinged; one that didn't answer the previous ping is dropped.
+const HEARTBEAT_MS = 25_000;
 const TYPING_MIN_INTERVAL_MS = 2000; // "is typing" passed on at most this often per person and channel
 const NUDGE_BURST = 3; // quick nudges allowed...
 const NUDGE_WINDOW_MS = 10_000; // ...in this window
@@ -51,32 +55,48 @@ export type Chat = { close: () => Promise<void> };
 // messages, hidden from the channel list. Only invited connections may join (accounts come in phase 4).
 type PrivateChannel = { topic: string; invited: Set<Member> };
 
-export function attachChat(server: Server, store: Store): Chat {
+export function attachChat(server: Server, store: Store, options: { heartbeatMs?: number } = {}): Chat {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const members = new Set<Member>();
   const privates = new Map<string, PrivateChannel>();
   let guestCounter = 0;
 
-  // Only /ws may upgrade to a WebSocket; anything else is refused.
+  // Only /ws may upgrade to a WebSocket; anything else is refused. "/ws?nick=Kota" asks to arrive
+  // with that nick (a device remembers its nick); if it is invalid or taken, you arrive as a guest.
   server.on("upgrade", (req, socket, head) => {
-    if (req.url !== "/ws") {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname !== "/ws") {
       socket.destroy();
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req);
+      wss.emit("connection", ws, url.searchParams.get("nick") ?? "");
     });
   });
 
-  wss.on("connection", (ws) => {
+  const heartbeat = setInterval(() => {
+    for (const m of members) {
+      if (!m.alive) {
+        m.ws.terminate(); // its "close" handler tells the others it left
+        continue;
+      }
+      m.alive = false;
+      m.ws.ping();
+    }
+  }, options.heartbeatMs ?? HEARTBEAT_MS);
+  heartbeat.unref();
+
+  wss.on("connection", (ws, wanted: string) => {
     // Without an error listener, one bad client (e.g. an oversized frame) would crash the process.
     ws.on("error", (err) => {
       console.warn(`websocket error: ${err.message}`);
     });
 
+    const asked = wanted.trim();
     const me: Member = {
       ws,
-      nick: newGuestNick(),
+      alive: true,
+      nick: NICK_PATTERN.test(asked) && !nickTaken(asked) ? asked : newGuestNick(),
       status: "online",
       note: "",
       channels: new Set(),
@@ -88,6 +108,9 @@ export function attachChat(server: Server, store: Store): Chat {
       thrownAt: [],
       batuqueAt: undefined,
     };
+    ws.on("pong", () => {
+      me.alive = true;
+    });
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
     run(me, () => join(me, HOME_CHANNEL));
@@ -433,6 +456,7 @@ export function attachChat(server: Server, store: Store): Chat {
     // Say goodbye to every client (1001 = going away), force-close stragglers, then stop.
     close: () =>
       new Promise<void>((resolve) => {
+        clearInterval(heartbeat);
         for (const client of wss.clients) client.close(1001, "server shutting down");
         const force = setTimeout(() => {
           for (const client of wss.clients) client.terminate();
