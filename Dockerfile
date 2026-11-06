@@ -2,7 +2,9 @@
 # Base pinned by digest: the tag says which line, the digest says exactly which bytes.
 
 # --- Stage 1: build the web client. Needs dev tools (esbuild), which never reach the final image. ---
-FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS web
+# Runs on the build machine's own platform: the built files are the same for every CPU, so an ARM
+# image doesn't have to run esbuild under emulation.
+FROM --platform=$BUILDPLATFORM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS web
 
 WORKDIR /build
 COPY package.json package-lock.json ./

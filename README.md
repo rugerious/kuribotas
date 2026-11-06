@@ -62,7 +62,7 @@ MVP: 28–42 h.
 - **Private chats** 💬🔒: `/msg Kota olá` (or the 💬 beside a name) opens a private chat tab with one person; `/privado #primos` makes a private channel and `/invite Kota` lets someone in. **Nothing private is saved yet** (saved private chats come in phase 4b): DMs and private channels live in the server's memory only, reach only people online right now, and a private channel disappears when its last member leaves. Private channels don't show in the channel list; anyone else trying `/join #primos` is told to ask for an invite. Invisible people can't be found by a DM or an invite. Inside a 💬 tab, `/abanar` and `/tornado` go to that person and "is typing…" works, MSN style.
 - **Family sounds** 🔊: a family server can swap in its own sounds without them ever reaching GitHub. Put MP3s in the server's private data folder (`data/sounds/`, or `/data/sounds` on the Docker volume): `nudge.mp3` and `tornado.mp3` (the defaults), plus `nudge-<name>.mp3` and `tornado-<name>.mp3` (extras) (the tornado shakes for as long as it plays). Each device picks its own with `/som` (lists the options), `/som 3` or `/som panelas` for the pots, and `/som tornado amapiano` or `/som tornado batucada` for the tornado. Only those file names are served, and anything missing falls back to the sounds made in code. **Don't commit sound files you didn't make**: the public repo and image only carry original sounds.
 - **Serving it:** the same server serves `web/dist` with a strict Content Security Policy (only our own scripts, styles and WebSocket; nothing from third parties) and path-traversal protection, tested with `../`, `%2e%2e` and `%2f` tricks.
-- **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`), built in two stages: the first bundles the web client with esbuild, the second holds only the server, its runtime dependencies and the built files. Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
+- **Container image:** `ghcr.io/rugerious/kuribotas/server` (tags `sha-<commit>` and `latest`), for `linux/amd64` and `linux/arm64` (the server is an AWS Graviton instance), built in two stages: the first bundles the web client with esbuild, the second holds only the server, its runtime dependencies and the built files. Base `node:26-slim` pinned by digest, runs as the unprivileged `node` user, Docker `HEALTHCHECK` on `/healthz`, stops gracefully in under a second.
 - **CI (GitHub Actions):** every PR runs `npm ci`, `npm run check`, a production `npm audit` and an image build; merges to `main` push the image to GHCR. Every action is pinned to a full commit SHA, and runners to `ubuntu-24.04`. Dependabot proposes npm, Actions and Docker updates weekly.
 - **Safety from day one:** pre-commit hook for project-specific values, `.gitignore` for secrets and the chat database, GitHub secret scanning + push protection, Dependabot security updates; npm `allowScripts` denies install scripts (esbuild's included, the build works without it), so no dependency runs code when installed.
 - **Dependency audit:** production tree clean (`npm audit --omit=dev`). One moderate, dev-only advisory (`minimatch` via ESLint) is accepted until upstream ships a fix: the patterns it parses are our own, and the suggested fix would downgrade ESLint a major version.
@@ -92,6 +92,7 @@ web/               web client: Preact + esbuild
 tsconfig.json      shared type-check settings
 eslint.config.js   lint rules
 Dockerfile         server image
+deploy/            the server's compose file (app + Cloudflare Tunnel) and its .env template
 .github/           CI workflow, Dependabot, PR template
 ~~~
 
@@ -164,10 +165,11 @@ POSTs need `Content-Type: application/json` and our own `Origin` (else `403 forb
 ## Planned architecture
 
 ~~~
-Phone (PWA) ──HTTPS/WSS──▶ Cloudflare Tunnel ──▶ small always-on server
-                                                  ├─ Node.js + TypeScript (HTTP + WebSocket)
-                                                  ├─ SQLite (messages, channels, users)
-                                                  └─ Web Push (VAPID) ──▶ phone notifications
+Phone (PWA) ──HTTPS/WSS──▶ Cloudflare ◀──outbound tunnel── AWS EC2 t4g.nano (no inbound ports)
+                                                             ├─ cloudflared (container)
+                                                             ├─ Node.js + TypeScript (HTTP + WebSocket, container)
+                                                             ├─ SQLite on the instance's encrypted disk
+                                                             └─ Web Push (VAPID) ──▶ phone notifications
 ~~~
 
 ## Rules this project follows
