@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–4 done (foundations, basic chat, web client, the Messenger side, the phone, invites and security) · next: **Phase 5 — deploy** (always-on server, Cloudflare Tunnel, backups). Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–4 done (foundations, basic chat, web client, the Messenger side, the phone, invites and security) · 🚧 **Phase 5 — deploy**: live on AWS behind a Cloudflare Tunnel (image, compose and Terraform done; next: backups and a load test). Target: in use by the family for Christmas 2026.
 
 ## What it is
 
@@ -35,7 +35,7 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ✅ (~3 h 30) |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ✅ (~1 h 20) |
 | 4b | Fun after accounts: stickers (family packs + our catchphrase pack), `/roll`, `/8ball`, December `/neve`; saved history for private chats | 2–4 | ⏳ |
-| 5 | Deploy: always-on server, Cloudflare Tunnel, backups, load test | 4–7 | ⏳ |
+| 5 | Deploy: AWS EC2 t4g.nano (Terraform) + Cloudflare Tunnel, no inbound ports; backups, load test | 4–7 | 🚧 |
 | 6 | Write-up | 2–3 | ⏳ |
 
 MVP: 28–42 h.
