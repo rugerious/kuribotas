@@ -565,20 +565,27 @@ function PersonRow({
     <li class="person">
       <span class="person-line">
         <span class={`dot st-${member.status}`} aria-hidden="true" />
-        <span class={`person-nick ${nickClass(member.nick)}`}>{member.nick}</span>
+        <span class={`person-nick ${nickClass(member.nick)}`} title={member.nick}>
+          {member.nick}
+        </span>
         {isMe && <span class="you"> {w.ui.you}</span>}
-        {!isMe && (
+      </span>
+      <span class="person-status">
+        {w.status[member.status]}
+        {member.note && ` · ${member.note}`}
+      </span>
+      {/* On their own line, so a long nick never pushes them out of the panel. */}
+      {!isMe && (
+        <span class="person-actions">
           <button
             type="button"
-            class="nudge dm"
+            class="nudge"
             aria-label={w.ui.dm(member.nick)}
             title={w.ui.dm(member.nick)}
             onClick={() => onDm(member.nick)}
           >
             💬
           </button>
-        )}
-        {!isMe && (
           <button
             type="button"
             class="nudge"
@@ -589,8 +596,6 @@ function PersonRow({
           >
             📳
           </button>
-        )}
-        {!isMe && (
           <button
             type="button"
             class="nudge"
@@ -601,12 +606,8 @@ function PersonRow({
           >
             🌪️
           </button>
-        )}
-      </span>
-      <span class="person-status">
-        {w.status[member.status]}
-        {member.note && ` · ${member.note}`}
-      </span>
+        </span>
+      )}
     </li>
   );
 }
