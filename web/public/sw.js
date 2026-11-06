@@ -3,7 +3,7 @@
 // shell comes from this cache; the chat then waits for the connection) and shows notifications.
 // Plain JavaScript on purpose: it runs in its own worker, outside the bundle.
 
-const CACHE = "kuribotas-shell-v1";
+const CACHE = "kuribotas-shell-v2";
 const SHELL = ["/", "/style.css", "/main.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -34,7 +34,9 @@ self.addEventListener("fetch", (event) => {
   const live = ["/api/", "/push/", "/sounds/"].some((prefix) => url.pathname.startsWith(prefix));
   if (live || url.pathname === "/ws" || url.pathname === "/healthz") return;
   event.respondWith(
-    fetch(request)
+    // "no-cache": always ask the server first (a 304 is cheap), never trust a copy that a cache
+    // in between kept for hours: a deploy reaches every phone on its next open.
+    fetch(request, { cache: "no-cache" })
       .then((response) => {
         if (response.ok) {
           const copy = response.clone();

@@ -23,31 +23,14 @@ echo "$${COMPOSE_SHA256}  /tmp/docker-compose" | sha256sum -c -
 install -m 755 /tmp/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 install -d -m 750 /opt/kuribotas
+dnf install -y -q sqlite # for the backups' consistent copy
 
-# deploy.sh: settings from SSM Parameter Store into a 0600 .env, the compose file of that same commit
-# (so the app and its compose file always match), then pull and (re)start.
-cat > /opt/kuribotas/deploy.sh <<'DEPLOY'
-#!/bin/bash
-# (Re)starts Kuribotas with the settings in SSM Parameter Store. Run as root: /opt/kuribotas/deploy.sh
-set -euo pipefail
-cd /opt/kuribotas
-get() { aws ssm get-parameter --region ${region} --name "$1" --with-decryption --query Parameter.Value --output text; }
-umask 077
-{
-  echo "KURIBOTAS_TAG=$(get /kuribotas/image-tag)"
-  echo "PUBLIC_URL=$(get /kuribotas/public-url)"
-  echo "TUNNEL_TOKEN=$(get /kuribotas/tunnel-token)"
-} > .env.new
-mv .env.new .env
-commit=$(sed -n 's/^KURIBOTAS_TAG=sha-//p' .env)
-curl -fsSL -o compose.yaml.new "https://raw.githubusercontent.com/rugerious/kuribotas/$commit/deploy/compose.yaml"
-mv compose.yaml.new compose.yaml
-install -d -o 1000 -g 1000 -m 700 data # the image's "node" user owns the data
-docker compose pull --quiet
-docker compose up -d --remove-orphans
-docker image prune -f
-DEPLOY
-chmod 700 /opt/kuribotas/deploy.sh
-
-# Start now if the settings are already there; if not, run deploy.sh once they are.
-/opt/kuribotas/deploy.sh || echo "deploy.sh failed (settings missing?): run it again once /kuribotas/* exist"
+# deploy.sh (and everything else on the server) comes from GitHub at the commit of the image in
+# /kuribotas/image-tag, so a new instance always gets the scripts that match its version.
+if tag=$(aws ssm get-parameter --region ${region} --name /kuribotas/image-tag --query Parameter.Value --output text) &&
+  curl -fsSL -o /opt/kuribotas/deploy.sh "https://raw.githubusercontent.com/rugerious/kuribotas/$${tag#sha-}/deploy/server/deploy.sh"; then
+  chmod 700 /opt/kuribotas/deploy.sh
+  /opt/kuribotas/deploy.sh || echo "deploy.sh failed: run it again through SSM"
+else
+  echo "no /kuribotas/image-tag yet: set it, then fetch and run deploy/server/deploy.sh through SSM"
+fi

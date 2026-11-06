@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "6.70.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.9.1"
+    }
   }
   # The bucket's name comes from backend.hcl (git-ignored):  terraform init -backend-config=backend.hcl
   backend "s3" {

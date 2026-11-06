@@ -92,7 +92,8 @@ web/               web client: Preact + esbuild
 tsconfig.json      shared type-check settings
 eslint.config.js   lint rules
 Dockerfile         server image
-deploy/            the server's compose file (app + Cloudflare Tunnel) and its .env template
+deploy/            the server's compose file (app + Cloudflare Tunnel), its .env template, and
+                   server/: deploy.sh, the nightly backup.sh and its systemd timer
 infra/             Terraform: the state bucket (bootstrap/) and the AWS server (server/); see infra/README.md
 .github/           CI workflow, Dependabot, PR template
 ~~~
@@ -175,7 +176,7 @@ Phone (PWA) ──HTTPS/WSS──▶ Cloudflare ◀──outbound tunnel── A
 
 ## Running it on AWS
 
-`infra/server` builds the whole server with Terraform: its own small VPC, an **EC2 t4g.nano** (Graviton, Amazon Linux 2023) with an encrypted disk, IMDSv2 only and termination protection, a security group with **no inbound rule at all**, an IAM role limited to SSM and the `/kuribotas/*` parameters, and a monthly budget alert. On first boot the instance installs Docker and Compose (pinned, hash-checked) and runs `deploy.sh`: settings from SSM Parameter Store into a `0600` `.env`, `deploy/compose.yaml` from the same commit as the image, then the app and the Cloudflare Tunnel start. The family reaches it through the tunnel; admins through SSM Session Manager (no SSH, no keys). The state lives in a versioned, encrypted S3 bucket with S3's own locking. Details and the parameters: [infra/README.md](infra/README.md).
+`infra/server` builds the whole server with Terraform: its own small VPC, an **EC2 t4g.nano** (Graviton, Amazon Linux 2023) with an encrypted disk, IMDSv2 only and termination protection, a security group with **no inbound rule at all**, an IAM role limited to SSM and the `/kuribotas/*` parameters, and a monthly budget alert. On first boot the instance installs Docker and Compose (pinned, hash-checked) and runs `deploy.sh`: settings from SSM Parameter Store into a `0600` `.env`, `deploy/compose.yaml` from the same commit as the image, then the app and the Cloudflare Tunnel start. The family reaches it through the tunnel; admins through SSM Session Manager (no SSH, no keys). Every night it backs up the database (SQLite's own consistent copy, integrity-checked), the notification keys and the family's sounds to a private, encrypted S3 bucket that the server can only **add** to (35 days kept). The state lives in a versioned, encrypted S3 bucket with S3's own locking. Details and the parameters: [infra/README.md](infra/README.md).
 
 ## Rules this project follows
 
