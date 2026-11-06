@@ -19,6 +19,9 @@ export type ChatMessage = {
 // "invisible" is never sent to anyone else: to the others you look like you left.
 export type Status = "online" | "away" | "busy" | "invisible";
 
+// Things the family throws at each other (and the batuque, which is for everyone). Shown, never saved.
+export type ThrowItem = "chinela" | "vassoura" | "colher" | "batuque";
+
 export type Member = {
   nick: string;
   status: Status;
@@ -37,7 +40,9 @@ export type ErrorCode =
   | "no_such_nick" // nobody by that name in the channel (invisible people included, so they stay hidden)
   | "nudge_too_soon" // detail = seconds to wait
   | "tornado_too_soon" // detail = seconds to wait
-  | "invisible_no_nudge" // nudging would give you away
+  | "invisible_no_nudge" // nudging (or throwing a chinela) would give you away
+  | "throw_too_soon" // detail = seconds to wait
+  | "batuque_too_soon" // detail = seconds to wait
   | "invite_only" // a private channel: ask a member for /invite
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
@@ -57,7 +62,8 @@ export type ClientMessage =
   | { type: "nudge"; channel: string; nick: string; tornado: boolean } // shake someone's screen (/abanar, /tornado)
   | { type: "nudge"; channel: string; everyone: true; tornado: boolean } // the whole channel (/abanar todos)
   | { type: "msg"; to: string; kind: MessageKind; text: string } // a private message (/msg Kota olá)
-  | { type: "invite"; channel: string; nick: string }; // let someone into a private channel (/invite Kota)
+  | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
+  | { type: "throw"; channel: string; item: ThrowItem; nick?: string }; // /chinela Kota; /batuque has no nick
 
 // What the server sends.
 export type ServerMessage =
@@ -76,4 +82,5 @@ export type ServerMessage =
   // private channels live in memory only, and reach only people online right now.
   | { type: "dm"; from: string; to: string; kind: MessageKind; text: string; at: string } // to both sides
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
+  | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
   | { type: "error"; code: ErrorCode; detail: string; reason: string };

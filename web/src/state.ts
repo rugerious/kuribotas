@@ -1,4 +1,4 @@
-import type { Channel, ChatMessage, Member, ServerMessage, Status } from "../../shared/protocol.ts";
+import type { Channel, ChatMessage, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { words, type Lang } from "./words.ts";
 
 // Everything on screen comes from this state, and the state only changes through reduce().
@@ -51,6 +51,7 @@ export type State = {
   active: string; // the open tab
   colours: Record<string, RoomColour>; // colours picked on this device
   nudged: { key: number; tornado: boolean } | null; // the last time someone shook me (the app shakes, buzzes, vibrates)
+  thrown: { key: number; item: ThrowItem; atMe: boolean } | null; // the last thing flying across the open channel
   seq: number; // gives every line a unique key
 };
 
@@ -76,6 +77,7 @@ export const initialState: State = {
   active: HOME_CHANNEL,
   colours: {},
   nudged: null,
+  thrown: null,
   seq: 0,
 };
 
@@ -298,6 +300,18 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       const next = addEvent(state, msg.channel, text, at, "info");
       const forMe = everyone ? msg.from !== state.nick : msg.to === state.nick;
       return forMe ? { ...next, nudged: { key: next.seq, tornado: msg.tornado } } : next;
+    }
+
+    case "throw": {
+      const text =
+        msg.item === "batuque" || msg.to === null
+          ? w.events.batuque(msg.from, msg.channel)
+          : w.events.thrown(msg.item, msg.from, msg.to);
+      const next = addEvent(state, msg.channel, text, at, "info");
+      // Only the open channel animates; a batuque "hits" everyone, a chinela only its target.
+      if (msg.channel !== state.active) return next;
+      const atMe = msg.to === null || msg.to === state.nick;
+      return { ...next, thrown: { key: next.seq, item: msg.item, atMe } };
     }
 
     case "typing": {

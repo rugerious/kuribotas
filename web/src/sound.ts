@@ -1,3 +1,5 @@
+import type { ThrowItem } from "../../shared/protocol.ts";
+
 // Kuribotas' own sounds, made in code: no audio files, nothing recorded or copied from anyone.
 // Nudge: pots falling in the kitchen, and a lid left spinning on the floor.
 // Tornado: a batucada with heavy bass that speeds up and drops into a kuduro-style beat.
@@ -93,6 +95,38 @@ function playBuffer(c: AudioContext, buffer: AudioBuffer, at: number): void {
   src.buffer = buffer;
   src.connect(c.destination);
   src.start(at);
+}
+
+// Chinela: a whoosh, then PÁ. Vassoura: two sweeps. Colher de pau: TOC TOC. Batuque: the kuduro batucada.
+// Timed to the animations in style.css (the hit lands halfway through the flight).
+export function playThrow(item: ThrowItem): void {
+  if (ctx === null || ctx.state !== "running") return;
+  const t = ctx.currentTime + 0.03;
+  switch (item) {
+    case "chinela":
+      noise(ctx, t, 0.4, 0.08, "bandpass", 900, 1.5);
+      slap(ctx, t + 0.42, 0.5);
+      boom(ctx, t + 0.42, 0.35, 0.18, 120, 70);
+      return;
+    case "vassoura":
+      noise(ctx, t + 0.1, 0.35, 0.18, "highpass", 3000, 0.7);
+      noise(ctx, t + 0.55, 0.35, 0.18, "highpass", 2500, 0.7);
+      return;
+    case "colher":
+      knock(ctx, t + 0.45);
+      knock(ctx, t + 0.6);
+      return;
+    case "batuque":
+      batucadaKuduro(ctx, t);
+      return;
+  }
+}
+
+// Wood, not metal: a short low tone that dies fast, plus a click.
+function knock(c: AudioContext, at: number): void {
+  envelope(c, at, at + 0.09, 0.4, osc(c, "sine", 520, at, at + 0.09));
+  envelope(c, at, at + 0.05, 0.15, osc(c, "triangle", 1250, at, at + 0.05));
+  noise(c, at, 0.02, 0.3, "bandpass", 2500, 1);
 }
 
 // Android vibrates; iPhones don't let web pages do it, so there it's only the shake.

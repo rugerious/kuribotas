@@ -1,4 +1,4 @@
-import type { ErrorCode, Status } from "../../shared/protocol.ts";
+import type { ErrorCode, Status, ThrowItem } from "../../shared/protocol.ts";
 import type { RoomColour } from "./state.ts";
 
 // Everything Kuribotas says, in one place. The family's language lives here, not in the code:
@@ -29,6 +29,7 @@ export type Words = {
     privateChannel: string; // after the topic of a private channel
     tornado: (nick: string) => string; // the 🌪️ button's label
     editNote: string; // the ✏️ button
+    hit: Record<ThrowItem, string>; // the big word when it lands
     notePlaceholder: string;
     noteSave: string;
     connection: Record<"connecting" | "open" | "closed", string>;
@@ -50,6 +51,8 @@ export type Words = {
     nudge: (from: string, to: string) => string;
     tornado: (from: string, to: string) => string;
     nudgeAll: (from: string, channel: string) => string;
+    thrown: (item: Exclude<ThrowItem, "batuque">, from: string, to: string) => string;
+    batuque: (from: string, channel: string) => string;
     tornadoAll: (from: string, channel: string) => string;
     shake: (on: boolean) => string;
     sound: (name: string) => string;
@@ -60,7 +63,7 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -106,6 +109,7 @@ const pt: Words = {
     privateChannel: "🔒 privado · não fica guardado",
     tornado: (nick) => `Mandar um tornado a ${nick}`,
     editNote: "Mudar a tua frase",
+    hit: { chinela: "PÁ!", vassoura: "XÔ!", colher: "TOC!", batuque: "TUM TUM TÁ!" },
     notePlaceholder: "A tua frase (vazio = nenhuma)",
     noteSave: "OK",
     typing: (n) =>
@@ -135,6 +139,13 @@ const pt: Words = {
     nudge: (from, to) => (from === to ? `${from} abanou-se a si mesmo 🤪` : `${from} abanou ${to}! 📳`),
     tornado: (from, to) => `${from} mandou um TORNADO para ${to}! 🌪️`,
     nudgeAll: (from, ch) => `${from} abanou o ${ch} inteiro! 📳`,
+    thrown: (item, from, to) =>
+      ({
+        chinela: `Chinelada de ${from} para ${to}! 🩴💨`,
+        vassoura: `Vassourada de ${from} para ${to}! 🧹`,
+        colher: `Maria das Dores de ${from} na cabeça de ${to}! TOC!`,
+      })[item],
+    batuque: (from, ch) => `${from} meteu batuque no ${ch}! 🥁🥁🥁`,
     tornadoAll: (from, ch) => `${from} mandou um TORNADO para o ${ch} inteiro! 🌪️🌪️`,
     shake: (on) =>
       on ? "Abanões ligados neste aparelho 📳" : "Abanões desligados neste aparelho: vês a linha, sem tremer nem som",
@@ -158,11 +169,13 @@ const pt: Words = {
     already_in_channel: (d) => `${d} já está cá dentro`,
     nudge_too_soon: (d) => `Calma aí! Espera ${d} s para abanar outra vez`,
     tornado_too_soon: (d) => `Um tornado de cada vez 🌪️ Espera ${d} s`,
-    invisible_no_nudge: () => "A zongolar não dá para abanar ninguém (ias-te denunciar 👀)",
+    invisible_no_nudge: () => "A zongolar não dá para fazer isso (ias-te denunciar 👀)",
+    throw_too_soon: (d) => `Calma com a chinela! Espera ${d} s`,
+    batuque_too_soon: (d) => `O batuque ainda está a ecoar 🥁 Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -180,6 +193,7 @@ const pt: Words = {
     "/abanar todos — o canal inteiro (1 por minuto) · /tornado todos — 1 em cada 5 minutos",
     "/abanoes nao — sem abanões neste aparelho (/abanoes sim para voltar)",
     "/som — ver e escolher o som do abanão neste aparelho (/som 3, /som panelas)",
+    "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/msg <nick> [mensagem] — conversa privada 💬 (não fica guardada)",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
     "/lingua en — English (neste aparelho)",
@@ -218,6 +232,7 @@ const en: Words = {
     privateChannel: "🔒 private · not saved",
     tornado: (nick) => `Send ${nick} a tornado`,
     editNote: "Change your note",
+    hit: { chinela: "SMACK!", vassoura: "SHOO!", colher: "BONK!", batuque: "BOOM BOOM TAK!" },
     notePlaceholder: "Your note (empty = none)",
     noteSave: "OK",
     typing: (n) =>
@@ -247,6 +262,13 @@ const en: Words = {
     nudge: (from, to) => (from === to ? `${from} nudged themselves 🤪` : `${from} nudged ${to}! 📳`),
     tornado: (from, to) => `${from} sent a TORNADO to ${to}! 🌪️`,
     nudgeAll: (from, ch) => `${from} nudged everyone in ${ch}! 📳`,
+    thrown: (item, from, to) =>
+      ({
+        chinela: `${from} threw a slipper at ${to}! 🩴💨`,
+        vassoura: `${from} chased ${to} out with a broom! 🧹`,
+        colher: `${from} bonked ${to} with Maria das Dores, the wooden spoon! BONK!`,
+      })[item],
+    batuque: (from, ch) => `${from} started a drum session in ${ch}! 🥁🥁🥁`,
     tornadoAll: (from, ch) => `${from} sent a TORNADO to everyone in ${ch}! 🌪️🌪️`,
     shake: (on) => (on ? "Nudges on for this device 📳" : "Nudges off for this device: you'll see the line, no shaking or sound"),
     sound: (name) => `Nudge sound on this device: ${name} 🔊`,
@@ -269,11 +291,13 @@ const en: Words = {
     already_in_channel: (d) => `${d} is already in`,
     nudge_too_soon: (d) => `easy! wait ${d} s before nudging again`,
     tornado_too_soon: (d) => `one tornado at a time 🌪️ wait ${d} s`,
-    invisible_no_nudge: () => "you can't nudge while invisible (it would give you away 👀)",
+    invisible_no_nudge: () => "you can't do that while invisible (it would give you away 👀)",
+    throw_too_soon: (d) => `easy with the slipper! wait ${d} s`,
+    batuque_too_soon: (d) => `the drums are still echoing 🥁 wait ${d} s`,
     internal: () => "something went wrong, please try again",
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -291,6 +315,7 @@ const en: Words = {
     "/nudge all — the whole channel (once a minute) · /tornado all — once every 5 minutes",
     "/shake off — no nudges on this device (/shake on to undo)",
     "/sound — see and pick this device's nudge sound (/sound 3, /sound panelas)",
+    "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/msg <nick> [message] — private chat 💬 (not saved)",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
     "/lang pt — Angolan Portuguese (on this device)",

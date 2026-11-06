@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
-import type { ClientMessage, Member, ServerMessage, Status } from "../../shared/protocol.ts";
+import type { ClientMessage, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { parseInput } from "./commands.ts";
 import {
   colourOf,
@@ -17,6 +17,7 @@ import {
   availableNudges,
   DEFAULT_SOUND,
   playNudge,
+  playThrow,
   setNudgeSound,
   tornadoSeconds,
   unlockSound,
@@ -38,6 +39,23 @@ const NICK_KEY = "kuribotas.nick"; // the nick this device asks for on arrival
 // On a reload the new page often arrives before the server sees the old one leave, so the saved nick
 // is still "taken" by ourselves for a moment: ask again quietly, a little later each time.
 const NICK_RETRIES = 3;
+const THROW_MS: Record<ThrowItem, number> = { chinela: 900, vassoura: 1200, colher: 1000, batuque: 2400 }; // match style.css
+const THROW_EMOJI: Record<Exclude<ThrowItem, "colher">, string> = { chinela: "🩴", vassoura: "🧹", batuque: "🥁" };
+
+// The Maria das Dores: Angola's wooden spoon, drawn here because the 🥄 emoji is metal.
+// Plain SVG shapes (fill attributes, no inline styles), so the strict CSP is happy.
+function WoodenSpoon() {
+  return (
+    <svg class="spoon" viewBox="0 0 40 120" width="40" height="120" aria-hidden="true">
+      <rect x="16" y="40" width="8" height="78" rx="4" fill="#8a5a2b" />
+      <rect x="18" y="46" width="2" height="66" rx="1" fill="#a8743f" />
+      <ellipse cx="20" cy="22" rx="16" ry="21" fill="#9c6633" />
+      <ellipse cx="20" cy="23" rx="11" ry="15" fill="#7a4a20" />
+      <path d="M13 14 q4 -6 10 -4" stroke="#b9854d" stroke-width="2" fill="none" stroke-linecap="round" />
+      <path d="M21 60 q2 10 0 20 M19 88 q-2 8 0 16" stroke="#6e431c" stroke-width="1.2" fill="none" />
+    </svg>
+  );
+}
 
 function loadNick(): string | null {
   try {
@@ -140,6 +158,7 @@ export function App() {
   const [shakeOn, setShakeOn] = useState(loadShake);
   const [shaking, setShaking] = useState<"" | "nudge" | "tornado">("");
   const [editingNote, setEditingNote] = useState(false);
+  const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
   const askedForNick = useRef(false);
   const autoNick = useRef<{ nick: string; tries: number } | null>(null); // the saved nick we're asking for
   const socket = useRef<WebSocket | null>(null);
@@ -231,6 +250,24 @@ export function App() {
     };
   }, [state.nudged?.key]);
 
+  // A chinela (or vassoura, colher, batuque) in the open channel: everyone sees it fly, the target gets
+  // hit (a jolt, the sound, a buzz). "/abanoes nao" turns all of it off; No biolo keeps it silent.
+  useEffect(() => {
+    const thrown = state.thrown;
+    if (thrown === null || !shakeOn) return;
+    if (thrown.atMe && state.status !== "busy") {
+      playThrow(thrown.item);
+      vibrate(false);
+    }
+    setFlying(null);
+    const start = setTimeout(() => setFlying({ item: thrown.item, atMe: thrown.atMe }), 20);
+    const stop = setTimeout(() => setFlying(null), THROW_MS[thrown.item] + 100);
+    return () => {
+      clearTimeout(start);
+      clearTimeout(stop);
+    };
+  }, [state.thrown?.key]);
+
   // "is typing" runs out on its own; the reducer returns the same state when nothing changed.
   useEffect(() => {
     const timer = setInterval(() => dispatch({ type: "tick", at: now() }), 1000);
@@ -300,7 +337,15 @@ export function App() {
   const typers = typingIn(room);
 
   return (
-    <div class={`app room-${colourOf(state, state.active)}${shaking ? ` shake-${shaking}` : ""}`}>
+    <div
+      class={`app room-${colourOf(state, state.active)}${shaking ? ` shake-${shaking}` : ""}${flying?.atMe ? ` hit-${flying.item}` : ""}`}
+    >
+      {flying && (
+        <div class={`throw throw-${flying.item}`} aria-hidden="true">
+          <span class="thing">{flying.item === "colher" ? <WoodenSpoon /> : THROW_EMOJI[flying.item]}</span>
+          {flying.atMe && <span class="hit">{w.ui.hit[flying.item]}</span>}
+        </div>
+      )}
       <header class="bar">
         <h1 class="brand">
           KURI<span>BOTAS</span>
