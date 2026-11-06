@@ -15,6 +15,7 @@ export type Parsed =
   | { kind: "sound"; tornado: boolean; name?: string } // handled on this device; no name = list the options
   | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
   | { kind: "closeDm"; nick: string } // close a private chat tab
+  | { kind: "notify"; on: boolean } // notifications on this device
   | { kind: "error"; text: string }
   | { kind: "nothing" };
 
@@ -47,6 +48,8 @@ const ALIASES: Record<string, string> = {
   "/maria": "/colher",
   "/spoon": "/colher",
   "/drums": "/batuque",
+  "/notificacoes": "/notifications",
+  "/notificações": "/notifications",
 };
 
 // In a private chat these make no sense (they belong to channels).
@@ -143,6 +146,12 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       return EVERYONE.includes(firstWord.toLowerCase())
         ? send({ type: "nudge", channel, everyone: true, tornado: command === "/tornado" })
         : send({ type: "nudge", channel, nick: firstWord, tornado: command === "/tornado" });
+    case "/notifications": {
+      const answer = firstWord.toLowerCase();
+      if (YES.includes(answer)) return { kind: "notify", on: true };
+      if (NO.includes(answer)) return { kind: "notify", on: false };
+      return usage(w.examples.notify);
+    }
     case "/shake": {
       const answer = firstWord.toLowerCase();
       if (YES.includes(answer)) return { kind: "shake", on: true };

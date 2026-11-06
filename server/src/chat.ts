@@ -1,7 +1,8 @@
 import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
-import type { Store } from "./store.ts";
+import { isValidSubscription, type PushSend } from "./push.ts";
+import type { PushRow, Store } from "./store.ts";
 
 // One connected person. Nicks and statuses live in memory, IRC style (accounts come with invites, phase 4).
 // `typingIn`: channel -> when we last passed on "is typing" (to rate-limit it, and to know a stop is due).
@@ -19,6 +20,7 @@ type Member = {
   groupTornadoAt: number | undefined; // ...a tornado to the whole channel
   thrownAt: number[]; // recent chinelas, vassouras and colheres
   batuqueAt: number | undefined; // the last batuque
+  push: Pick<PushRow, "endpoint" | "p256dh" | "auth" | "lang"> | undefined; // this device's notifications
 };
 
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
@@ -41,6 +43,8 @@ const GROUP_TORNADO_EVERY_MS = 300_000; // a tornado for everyone: once every 5 
 const THROW_BURST = 3; // chinelas, vassouras and colheres together...
 const THROW_WINDOW_MS = 10_000; // ...in this window
 const BATUQUE_EVERY_MS = 60_000; // a batuque for the whole channel: once a minute
+const MENTION_PUSH_EVERY_MS = 20_000; // at most one mention notification per device in this time
+const MAX_PUSH_TEXT = 140; // characters of a message shown in a notification
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 const THROW_ITEMS: readonly ThrowItem[] = ["chinela", "vassoura", "colher", "batuque"];
 
@@ -55,10 +59,15 @@ export type Chat = { close: () => Promise<void> };
 // messages, hidden from the channel list. Only invited connections may join (accounts come in phase 4).
 type PrivateChannel = { topic: string; invited: Set<Member> };
 
-export function attachChat(server: Server, store: Store, options: { heartbeatMs?: number } = {}): Chat {
+export function attachChat(
+  server: Server,
+  store: Store,
+  options: { heartbeatMs?: number; pushSend?: PushSend } = {},
+): Chat {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const members = new Set<Member>();
   const privates = new Map<string, PrivateChannel>();
+  const lastMentionPush = new Map<string, number>(); // endpoint -> when
   let guestCounter = 0;
 
   // Only /ws may upgrade to a WebSocket; anything else is refused. "/ws?nick=Kota" asks to arrive
@@ -107,6 +116,7 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
       groupTornadoAt: undefined,
       thrownAt: [],
       batuqueAt: undefined,
+      push: undefined,
     };
     ws.on("pong", () => {
       me.alive = true;
@@ -146,6 +156,7 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
         const change: ServerMessage = { type: "nick", old, nick };
         if (visible(me)) for (const other of members) send(other, change);
         else send(me, change); // invisible people change nick in private
+        syncPush(me);
         return;
       }
       case "join": {
@@ -164,6 +175,7 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
           return reject(me, "invite_only", channel, `${channel} is private: ask a member to /invite you`);
         }
         join(me, channel);
+        syncPush(me);
         return;
       }
       case "throw": {
@@ -181,7 +193,8 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
         }
         const wanted = (msg.nick ?? "").trim().toLowerCase();
         const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
-        if (target === undefined) {
+        const away = target === undefined ? awayDevices(msg.nick ?? "", channel) : [];
+        if (target === undefined && away.length === 0) {
           return reject(me, "no_such_nick", (msg.nick ?? "").trim(), `no ${msg.nick ?? ""} in ${channel}`);
         }
         me.thrownAt = me.thrownAt.filter((at) => now - at < THROW_WINDOW_MS);
@@ -190,7 +203,9 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
           return reject(me, "throw_too_soon", seconds(oldest + THROW_WINDOW_MS - now), "too many throws");
         }
         me.thrownAt.push(now);
-        sendToChannel(channel, { type: "throw", channel, from: me.nick, to: target.nick, item: msg.item });
+        const to = target?.nick ?? away[0]?.nick ?? wanted;
+        sendToChannel(channel, { type: "throw", channel, from: me.nick, to, item: msg.item });
+        for (const row of away) notify(row, msg.item, me.nick, channel, "", "high");
         return;
       }
       case "invite": {
@@ -228,6 +243,7 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
         me.channels.delete(channel);
         me.typingIn.delete(channel);
         forgetPrivate(channel, me);
+        syncPush(me);
         return;
       }
       case "say":
@@ -243,6 +259,7 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
         const saved = privates.has(channel) ? { id: 0, ...said } : store.addMessage(said);
         me.typingIn.delete(channel); // the others clear "is typing" when the message arrives
         sendToChannel(channel, { type: "message", ...saved });
+        if (!privates.has(channel)) notifyMentions(me, channel, text);
         return;
       }
       case "topic": {
@@ -276,6 +293,19 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
         const presence: ServerMessage = { type: "presence", nick: me.nick, status: me.status, note: me.note };
         send(me, presence);
         if (visible(me)) for (const other of peers) send(other, presence);
+        syncPush(me); // No biolo = quiet
+        return;
+      }
+      case "push": {
+        if (msg.subscription === null) {
+          if (me.push !== undefined) store.deletePush(me.push.endpoint);
+          me.push = undefined;
+          return;
+        }
+        if (!isValidSubscription(msg.subscription)) return reject(me, "push_invalid", "", "not a push service subscription");
+        const { endpoint, keys } = msg.subscription;
+        me.push = { endpoint, p256dh: keys.p256dh, auth: keys.auth, lang: msg.lang };
+        syncPush(me);
         return;
       }
       case "typing": {
@@ -346,10 +376,16 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
         const wanted = msg.nick.trim().toLowerCase();
         // Invisible people get the same answer as nobody at all, so a nudge can't find them.
         const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
-        if (target === undefined) return reject(me, "no_such_nick", msg.nick.trim(), `no ${msg.nick.trim()} in ${channel}`);
+        // Not here, but their phone asked for notifications from this channel: the nudge reaches the pocket.
+        const away = target === undefined ? awayDevices(msg.nick, channel) : [];
+        if (target === undefined && away.length === 0) {
+          return reject(me, "no_such_nick", msg.nick.trim(), `no ${msg.nick.trim()} in ${channel}`);
+        }
         const wait = nudgeWait(me, msg.tornado, now);
         if (wait !== null) return reject(me, wait.code, wait.seconds, "too many nudges");
-        sendToChannel(channel, { type: "nudge", channel, from: me.nick, to: target.nick, tornado: msg.tornado });
+        const to = target?.nick ?? away[0]?.nick ?? msg.nick.trim();
+        sendToChannel(channel, { type: "nudge", channel, from: me.nick, to, tornado: msg.tornado });
+        for (const row of away) notify(row, msg.tornado ? "tornado" : "nudge", me.nick, channel, "", "high");
         return;
       }
     }
@@ -372,6 +408,47 @@ export function attachChat(server: Server, store: Store, options: { heartbeatMs?
       history: secret === undefined ? store.recentMessages(channel, HISTORY_LIMIT) : [],
       private: secret !== undefined,
     });
+  }
+
+  // --- notifications -------------------------------------------------------------------------
+  // A device's subscription follows its person: nick, public channels, and No biolo (= quiet).
+  function syncPush(me: Member): void {
+    if (me.push === undefined) return;
+    const channels = [...me.channels].filter((c) => !privates.has(c));
+    store.savePush({ ...me.push, nick: me.nick, channels, quiet: me.status === "busy", at: new Date().toISOString() });
+  }
+
+  const connected = (nick: string): boolean => [...members].some((m) => m.nick.toLowerCase() === nick.toLowerCase());
+
+  // Devices of someone who isn't connected, asked for notifications from this channel, and isn't No biolo.
+  function awayDevices(nick: string, channel: string): PushRow[] {
+    if (nick.trim() === "" || connected(nick.trim())) return [];
+    return store.pushFor(nick.trim()).filter((r) => r.channels.includes(channel) && !r.quiet);
+  }
+
+  // "Estraga_Lar, vens jantar?" notifies Estraga_Lar's phone if they're away. Public channels only.
+  function notifyMentions(me: Member, channel: string, text: string): void {
+    const now = Date.now();
+    for (const row of store.pushInChannel(channel)) {
+      if (row.quiet || row.nick.toLowerCase() === me.nick.toLowerCase() || connected(row.nick)) continue;
+      if (!mentions(text, row.nick)) continue;
+      if (now - (lastMentionPush.get(row.endpoint) ?? 0) < MENTION_PUSH_EVERY_MS) continue;
+      lastMentionPush.set(row.endpoint, now);
+      notify(row, "mention", me.nick, channel, text, "normal");
+    }
+  }
+
+  // Fire and forget: a failure is logged (never the message), a device that is gone is forgotten.
+  function notify(row: PushRow, kind: PushKind, from: string, channel: string, text: string, urgency: "normal" | "high"): void {
+    const pushSend = options.pushSend;
+    if (pushSend === undefined) return;
+    const payload = JSON.stringify({ ...pushText(row.lang, kind, from, channel, text), tag: `${kind}-${channel}` });
+    pushSend({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, payload, urgency)
+      .then((status) => {
+        if (status === 404 || status === 410) store.deletePush(row.endpoint);
+        else if (status >= 400) console.warn(`push refused: ${status}`);
+      })
+      .catch((err: unknown) => console.warn(`push failed: ${err instanceof Error ? err.name : "error"}`));
   }
 
   // Personal nudges (channel or private chat): 3 quick ones per 10 s, one tornado a minute.
@@ -490,6 +567,29 @@ function seconds(ms: number): string {
   return String(Math.max(1, Math.ceil(ms / 1000)));
 }
 
+type PushKind = "mention" | "nudge" | "tornado" | Exclude<ThrowItem, "batuque">;
+
+// What a notification says, in the device's language (the server doesn't see words.ts).
+function pushText(lang: "pt" | "en", kind: PushKind, from: string, channel: string, text: string): { title: string; body: string } {
+  const where = lang === "pt" ? `no ${channel}` : `in ${channel}`;
+  const short = text.length > MAX_PUSH_TEXT ? `${text.slice(0, MAX_PUSH_TEXT - 1)}…` : text;
+  const titles: Record<PushKind, [string, string]> = {
+    mention: [`${from} · ${channel}`, `${from} · ${channel}`],
+    nudge: [`📳 ${from} abanou-te!`, `📳 ${from} nudged you!`],
+    tornado: [`🌪️ TORNADO de ${from}!`, `🌪️ TORNADO from ${from}!`],
+    chinela: [`🩴 Chinelada de ${from}!`, `🩴 ${from} threw a slipper at you!`],
+    vassoura: [`🧹 Vassourada de ${from}!`, `🧹 ${from} chased you with a broom!`],
+    colher: [`🥄 Maria das Dores de ${from}!`, `🥄 ${from} got you with Maria das Dores!`],
+  };
+  return { title: titles[kind][lang === "pt" ? 0 : 1], body: kind === "mention" ? short : where };
+}
+
+// A nick written as a whole word, any case: "Kota," and "@kota" count; "Kotas" doesn't.
+function mentions(text: string, nick: string): boolean {
+  const escaped = nick.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}($|[^\\p{L}\\p{N}_])`, "iu").test(text);
+}
+
 function normaliseChannel(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -534,6 +634,16 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       if (channel === undefined || item === undefined) return undefined;
       if (item === "batuque") return { type: "throw", channel, item };
       return nick === undefined ? undefined : { type: "throw", channel, item, nick };
+    }
+    case "push": {
+      const lang = v.lang === "en" ? "en" : "pt";
+      if (v.subscription === null) return { type: "push", subscription: null, lang };
+      // The shape is checked here loosely; the handler checks it is a real push service's.
+      const s = v.subscription as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } } | undefined;
+      if (typeof s?.endpoint !== "string" || typeof s.keys?.p256dh !== "string" || typeof s.keys.auth !== "string") {
+        return undefined;
+      }
+      return { type: "push", subscription: { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } }, lang };
     }
     case "msg": {
       const to = str("to");

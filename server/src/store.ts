@@ -12,6 +12,19 @@ export type StoredMessage = {
 };
 export type NewMessage = Omit<StoredMessage, "id">;
 
+// A device that asked for notifications (Web Push). Until accounts (phase 4) it belongs to a nick,
+// and only for public things: mentions in public channels and nudges. `quiet` = No biolo.
+export type PushRow = {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  nick: string;
+  channels: string[]; // public channels the device was in, for mentions and nudges there
+  quiet: boolean;
+  lang: "pt" | "en";
+  at: string;
+};
+
 export type Store = {
   getChannel: (name: string) => Channel | undefined;
   createChannel: (name: string, at: string) => Channel; // returns the existing one if it already exists
@@ -19,6 +32,10 @@ export type Store = {
   setTopic: (name: string, topic: string) => Channel;
   addMessage: (msg: NewMessage) => StoredMessage;
   recentMessages: (channel: string, limit: number) => StoredMessage[];
+  savePush: (row: PushRow) => void; // insert or replace, by endpoint
+  deletePush: (endpoint: string) => void;
+  pushFor: (nick: string) => PushRow[]; // any case
+  pushInChannel: (channel: string) => PushRow[];
   close: () => void;
 };
 
@@ -57,6 +74,20 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE messages ADD COLUMN nick TEXT NOT NULL DEFAULT '';
   ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'say' CHECK (kind IN ('say', 'me'));
   `,
+  `
+  -- v3: devices that asked for notifications (Web Push). channels is a JSON array of public channels.
+  CREATE TABLE push_subscriptions (
+    endpoint   TEXT PRIMARY KEY,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    nick       TEXT NOT NULL,
+    channels   TEXT NOT NULL DEFAULT '[]',
+    quiet      INTEGER NOT NULL DEFAULT 0,
+    lang       TEXT NOT NULL DEFAULT 'pt',
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX push_by_nick ON push_subscriptions (lower(nick));
+  `,
 ];
 
 // Opens (or creates) the database and brings its schema up to date.
@@ -92,6 +123,20 @@ export function openStore(path: string): Store {
     LIMIT :limit
   `);
 
+  const upsertPush = db.prepare(`
+    INSERT INTO push_subscriptions (endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at)
+    VALUES (:endpoint, :p256dh, :auth, :nick, :channels, :quiet, :lang, :at)
+    ON CONFLICT (endpoint) DO UPDATE SET p256dh = :p256dh, auth = :auth, nick = :nick,
+      channels = :channels, quiet = :quiet, lang = :lang, updated_at = :at
+  `);
+  const removePush = db.prepare("DELETE FROM push_subscriptions WHERE endpoint = :endpoint");
+  const pushColumns = "endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at AS at";
+  const selectPushByNick = db.prepare(`SELECT ${pushColumns} FROM push_subscriptions WHERE lower(nick) = lower(:nick)`);
+  const selectPushByChannel = db.prepare(`
+    SELECT ${pushColumns} FROM push_subscriptions
+    WHERE EXISTS (SELECT 1 FROM json_each(channels) WHERE value = :channel)
+  `);
+
   const getChannel = (name: string): Channel | undefined => {
     const row = selectChannel.get({ name });
     return row === undefined ? undefined : toChannel(row);
@@ -121,6 +166,14 @@ export function openStore(path: string): Store {
         .all({ channel, limit })
         .map((row) => toMessage(row))
         .reverse(), // oldest first, ready to display
+    savePush: (row) => {
+      upsertPush.run({ ...row, channels: JSON.stringify(row.channels), quiet: row.quiet ? 1 : 0 });
+    },
+    deletePush: (endpoint) => {
+      removePush.run({ endpoint });
+    },
+    pushFor: (nick) => selectPushByNick.all({ nick }).map((row) => toPush(row)),
+    pushInChannel: (channel) => selectPushByChannel.all({ channel }).map((row) => toPush(row)),
     close: () => db.close(),
   };
 }
@@ -154,6 +207,19 @@ function toMessage(row: Record<string, unknown>): StoredMessage {
     nick: String(row.nick),
     kind: row.kind === "me" ? "me" : "say",
     text: String(row.text),
+    at: String(row.at),
+  };
+}
+
+function toPush(row: Record<string, unknown>): PushRow {
+  return {
+    endpoint: String(row.endpoint),
+    p256dh: String(row.p256dh),
+    auth: String(row.auth),
+    nick: String(row.nick),
+    channels: JSON.parse(String(row.channels)) as string[],
+    quiet: Number(row.quiet) === 1,
+    lang: row.lang === "en" ? "en" : "pt",
     at: String(row.at),
   };
 }

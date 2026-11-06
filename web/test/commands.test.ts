@@ -184,3 +184,10 @@ test("/chinela, /vassoura and /colher aim at someone; /batuque is for everyone; 
   assert.deepEqual(parseInput("/vassoura", here, "pt"), { kind: "error", text: "Usa assim: /chinela | /vassoura | /mariadasdores <nick>" });
   assert.equal(parseInput("/chinela Kota", "Kota", "pt").kind, "error");
 });
+
+test("/notificacoes switches notifications on this device", () => {
+  assert.deepEqual(parseInput("/notificacoes sim", here, "pt"), { kind: "notify", on: true });
+  assert.deepEqual(parseInput("/notificações não", here, "pt"), { kind: "notify", on: false });
+  assert.deepEqual(parseInput("/notifications on", here, "en"), { kind: "notify", on: true });
+  assert.deepEqual(parseInput("/notificacoes", here, "pt"), { kind: "error", text: "Usa assim: /notificacoes sim | nao" });
+});
