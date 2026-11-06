@@ -432,6 +432,39 @@ body::after {
   border-top: 1px solid var(--border);
 }
 
+/* The family emoji bar, above the message box */
+.emoji-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.emoji-bar button {
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.emoji-bar button:hover:not(:disabled) {
+  border-color: var(--room);
+}
+.emoji-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+}
+.emoji-toggle[aria-expanded="true"] {
+  border-color: var(--room);
+}
+
 /* Input */
 .input {
   display: flex;
@@ -453,7 +486,7 @@ body::after {
 .input input::placeholder {
   color: var(--muted);
 }
-.input button {
+.input button[type="submit"] {
   min-height: 44px;
   padding: 0 18px;
   border: 1px solid var(--room);
@@ -464,7 +497,7 @@ body::after {
   text-transform: uppercase;
   cursor: pointer;
 }
-.input button:disabled,
+.input button[type="submit"]:disabled,
 .input input:disabled {
   opacity: 0.45;
   cursor: not-allowed;

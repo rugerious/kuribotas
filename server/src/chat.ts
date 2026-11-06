@@ -257,6 +257,24 @@ export function attachChat(server: Server, store: Store): Chat {
       }
       case "typing": {
         // Not saved, not logged, and never an error: it is only a hint, so anything odd is dropped.
+        if ("to" in msg) {
+          // In a private chat: keyed "@nick" so it shares the rate limit machinery with channels.
+          if (!visible(me)) return;
+          const target = findVisible(msg.to, me);
+          if (target === undefined || target === me) return;
+          const key = `@${target.nick.toLowerCase()}`;
+          const last = me.typingIn.get(key);
+          if (msg.typing) {
+            const now = Date.now();
+            if (last !== undefined && now - last < TYPING_MIN_INTERVAL_MS) return;
+            me.typingIn.set(key, now);
+          } else {
+            if (last === undefined) return;
+            me.typingIn.delete(key);
+          }
+          send(target, { type: "typing", dm: true, nick: me.nick, typing: msg.typing });
+          return;
+        }
         const channel = normaliseChannel(msg.channel);
         if (!me.channels.has(channel) || !visible(me)) return; // invisible people never give themselves away
         const last = me.typingIn.get(channel);
@@ -273,6 +291,18 @@ export function attachChat(server: Server, store: Store): Chat {
       }
       case "nudge": {
         // Not saved: a nudge is a moment, not history.
+        if ("to" in msg) {
+          // In a private chat (MSN's home): same limits as a nudge in a channel.
+          if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't nudge while invisible");
+          const target = findVisible(msg.to, me);
+          if (target === undefined) return reject(me, "no_such_nick", msg.to.trim(), `nobody called ${msg.to.trim()}`);
+          const wait = nudgeWait(me, msg.tornado, Date.now());
+          if (wait !== null) return reject(me, wait.code, wait.seconds, "too many nudges");
+          const dm: ServerMessage = { type: "nudge", dm: true, from: me.nick, to: target.nick, tornado: msg.tornado };
+          send(target, dm);
+          if (target !== me) send(me, dm);
+          return;
+        }
         const channel = normaliseChannel(msg.channel);
         if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
         if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't nudge while invisible");
@@ -294,18 +324,8 @@ export function attachChat(server: Server, store: Store): Chat {
         // Invisible people get the same answer as nobody at all, so a nudge can't find them.
         const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
         if (target === undefined) return reject(me, "no_such_nick", msg.nick.trim(), `no ${msg.nick.trim()} in ${channel}`);
-        if (msg.tornado) {
-          const wait = me.tornadoAt === undefined ? 0 : me.tornadoAt + TORNADO_EVERY_MS - now;
-          if (wait > 0) return reject(me, "tornado_too_soon", seconds(wait), "one tornado a minute");
-          me.tornadoAt = now;
-        } else {
-          me.nudgedAt = me.nudgedAt.filter((at) => now - at < NUDGE_WINDOW_MS);
-          const oldest = me.nudgedAt[0];
-          if (me.nudgedAt.length >= NUDGE_BURST && oldest !== undefined) {
-            return reject(me, "nudge_too_soon", seconds(oldest + NUDGE_WINDOW_MS - now), "too many nudges");
-          }
-          me.nudgedAt.push(now);
-        }
+        const wait = nudgeWait(me, msg.tornado, now);
+        if (wait !== null) return reject(me, wait.code, wait.seconds, "too many nudges");
         sendToChannel(channel, { type: "nudge", channel, from: me.nick, to: target.nick, tornado: msg.tornado });
         return;
       }
@@ -329,6 +349,24 @@ export function attachChat(server: Server, store: Store): Chat {
       history: secret === undefined ? store.recentMessages(channel, HISTORY_LIMIT) : [],
       private: secret !== undefined,
     });
+  }
+
+  // Personal nudges (channel or private chat): 3 quick ones per 10 s, one tornado a minute.
+  // Returns what to refuse with, or null after counting this one.
+  function nudgeWait(me: Member, tornado: boolean, now: number): { code: ErrorCode; seconds: string } | null {
+    if (tornado) {
+      const wait = me.tornadoAt === undefined ? 0 : me.tornadoAt + TORNADO_EVERY_MS - now;
+      if (wait > 0) return { code: "tornado_too_soon", seconds: seconds(wait) };
+      me.tornadoAt = now;
+      return null;
+    }
+    me.nudgedAt = me.nudgedAt.filter((at) => now - at < NUDGE_WINDOW_MS);
+    const oldest = me.nudgedAt[0];
+    if (me.nudgedAt.length >= NUDGE_BURST && oldest !== undefined) {
+      return { code: "nudge_too_soon", seconds: seconds(oldest + NUDGE_WINDOW_MS - now) };
+    }
+    me.nudgedAt.push(now);
+    return null;
   }
 
   // When the last member leaves a private channel, it is gone: name, topic and invites.
@@ -497,9 +535,14 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
     }
     case "typing": {
       const channel = str("channel");
-      return channel === undefined || typeof v.typing !== "boolean" ? undefined : { type: "typing", channel, typing: v.typing };
+      const to = str("to");
+      if (typeof v.typing !== "boolean") return undefined;
+      if (to !== undefined) return { type: "typing", to, typing: v.typing };
+      return channel === undefined ? undefined : { type: "typing", channel, typing: v.typing };
     }
     case "nudge": {
+      const to = str("to");
+      if (to !== undefined) return { type: "nudge", to, tornado: v.tornado === true };
       const channel = str("channel");
       const nick = str("nick");
       const tornado = v.tornado === true;

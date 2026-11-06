@@ -1,0 +1,20 @@
+// The family's emoji bar (the 😀 beside the message box). Change the list freely: order = order on screen.
+export const FAMILY_EMOJI: readonly string[] = [
+  "😂",
+  "🤣",
+  "😭",
+  "🙏",
+  "❤️",
+  "🔥",
+  "👀",
+  "🤦",
+  "😴",
+  "🎉",
+  "🩴",
+  "🧹",
+  "🥁",
+  "🍗",
+  "🍺",
+  "⚽",
+  "🇦🇴",
+];

@@ -56,11 +56,11 @@ export function staticFiles(root: string): StaticHandler {
 }
 
 // The family's own sounds (e.g. memes for the nudge) live in the server's private data folder,
-// never in Git or the image. Only these names are served: nudge.mp3 (the default nudge),
-// nudge-<name>.mp3 (extra nudges each device can pick with /som) and tornado.mp3. Anything
+// never in Git or the image. Only these names are served: nudge.mp3 and tornado.mp3 (the defaults),
+// and nudge-<name>.mp3 / tornado-<name>.mp3 (extras each device can pick with /som). Anything
 // missing falls back to the sounds made in code. GET /sounds/available lists what exists,
 // so browsers never ask for a missing file.
-const FAMILY_SOUND = /^(nudge(-[a-z0-9]{1,16})?|tornado)\.mp3$/;
+const FAMILY_SOUND = /^(nudge|tornado)(-[a-z0-9]{1,16})?\.mp3$/;
 
 export function familySounds(root: string): StaticHandler {
   const base = resolve(root);

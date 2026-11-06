@@ -12,7 +12,7 @@ export type Parsed =
   | { kind: "colour"; colour?: RoomColour } // handled on this device; no colour = the next one
   | { kind: "lang"; lang: Lang } // handled on this device
   | { kind: "shake"; on: boolean } // handled on this device
-  | { kind: "sound"; name?: string } // handled on this device; no name = list the options
+  | { kind: "sound"; tornado: boolean; name?: string } // handled on this device; no name = list the options
   | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
   | { kind: "closeDm"; nick: string } // close a private chat tab
   | { kind: "error"; text: string }
@@ -50,7 +50,7 @@ const ALIASES: Record<string, string> = {
 };
 
 // In a private chat these make no sense (they belong to channels).
-const CHANNEL_ONLY = ["/topic", "/nudge", "/tornado", "/invite", "/chinela", "/vassoura", "/colher", "/batuque"];
+const CHANNEL_ONLY = ["/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque"];
 
 // The family's arsenal, in both languages.
 const THROWS: Record<string, ThrowItem> = {
@@ -99,6 +99,8 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
   if (isDm(channel)) {
     if (command === "/me") return rest ? send({ type: "msg", to: channel, kind: "me", text: rest }) : usage(w.examples.me);
     if (command === "/part" && !firstWord) return { kind: "closeDm", nick: channel };
+    // MSN's nudge lived in the conversation window: here it always goes to the other person.
+    if (command === "/nudge" || command === "/tornado") return send({ type: "nudge", to: channel, tornado: command === "/tornado" });
     if (CHANNEL_ONLY.includes(command) && !(command === "/invite" && rest.split(/\s+/)[1])) {
       return { kind: "error", text: w.channelsOnly };
     }
@@ -158,11 +160,13 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
     }
     case "/private":
       return firstWord ? send({ type: "join", channel: withHash(firstWord), private: true }) : usage(w.examples.private);
-    case "/sound":
-      // Accents dropped, so /som padrão and /som padrao are the same.
-      return firstWord
-        ? { kind: "sound", name: firstWord.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "") }
-        : { kind: "sound" };
+    case "/sound": {
+      // Accents dropped, so /som padrão and /som padrao are the same. "/som tornado …" picks the tornado's.
+      const words = rest.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").split(/\s+/).filter(Boolean);
+      const tornado = words[0] === "tornado";
+      const name = tornado ? words[1] : words[0];
+      return name === undefined ? { kind: "sound", tornado } : { kind: "sound", tornado, name };
+    }
     case "/lang": {
       const wanted = firstWord.toLowerCase();
       return isLang(wanted) ? { kind: "lang", lang: wanted } : usage(w.examples.lang);

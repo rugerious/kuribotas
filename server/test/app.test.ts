@@ -601,3 +601,20 @@ test("batuque is for the whole channel, once a minute; no throwing while invisib
   a.c.ws.close();
   b.c.ws.close();
 });
+
+test("in a private chat: a nudge reaches both sides with the usual limits, typing reaches only the other", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  const c = await arrive();
+  send(a.c, { type: "nudge", to: b.nick, tornado: false });
+  assert.deepEqual(await until(b.c, ofType("nudge")), { type: "nudge", dm: true, from: a.nick, to: b.nick, tornado: false });
+  assert.equal((await until(a.c, ofType("nudge"))).dm, true);
+  send(a.c, { type: "nudge", to: b.nick, tornado: true });
+  send(a.c, { type: "nudge", to: b.nick, tornado: true }); // a minute between tornadoes, in DMs too
+  assert.equal((await until(a.c, ofType("error"))).code, "tornado_too_soon");
+  send(a.c, { type: "typing", to: b.nick, typing: true });
+  assert.deepEqual(await until(b.c, ofType("typing")), { type: "typing", dm: true, nick: a.nick, typing: true });
+  send(b.c, { type: "say", channel: "#mujimbo", text: "marker-dm-typing" });
+  assert.equal((await nextReal(c.c)).text, "marker-dm-typing"); // c saw none of it
+  for (const x of [a, b, c]) x.c.ws.close();
+});

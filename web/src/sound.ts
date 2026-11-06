@@ -12,37 +12,39 @@ import type { ThrowItem } from "../../shared/protocol.ts";
 let ctx: AudioContext | null = null;
 let shaper: WaveShaperNode | null = null;
 let familyLoading = false;
-const family = new Map<string, AudioBuffer>(); // "nudge", "nudge-3", "tornado"…
-let nudgeChoice: string | null = null; // what this device picked with /som (null = the default)
+const family = new Map<string, AudioBuffer>(); // "nudge", "nudge-3", "tornado", "tornado-amapiano"…
 
-// The nudge sounds this device can pick: the default, each extra file, and the pots made in code.
+// Each device picks its own nudge and tornado sound with /som: the default file, each extra file,
+// or the sound made in code (the pots for a nudge, the batucada for a tornado).
+export type SoundKind = "nudge" | "tornado";
 export const DEFAULT_SOUND = "padrao";
-export const BUILT_IN_SOUND = "panelas";
+export const BUILT_IN: Record<SoundKind, string> = { nudge: "panelas", tornado: "batucada" };
+const picked: Record<SoundKind, string | null> = { nudge: null, tornado: null }; // null = the default
 
-export function nudgeChoices(files: readonly string[]): string[] {
-  const extras = files.filter((f) => f.startsWith("nudge-")).map((f) => f.slice("nudge-".length));
-  return [DEFAULT_SOUND, ...extras, BUILT_IN_SOUND];
+export function soundChoices(kind: SoundKind, files: readonly string[]): string[] {
+  const extras = files.filter((f) => f.startsWith(`${kind}-`)).map((f) => f.slice(kind.length + 1));
+  return [DEFAULT_SOUND, ...extras, BUILT_IN[kind]];
 }
 
-// Which sound to play for a nudge, given this device's choice and the files loaded.
-// A choice whose file has gone falls back to the default; no default file means the pots.
-export function nudgeSource(choice: string | null, files: readonly string[]): string {
-  if (choice === BUILT_IN_SOUND) return BUILT_IN_SOUND;
-  if (choice !== null && choice !== DEFAULT_SOUND && files.includes(`nudge-${choice}`)) return `nudge-${choice}`;
-  return files.includes("nudge") ? "nudge" : BUILT_IN_SOUND;
+// Which sound plays, given this device's choice and the files loaded. A choice whose file has
+// gone falls back to the default; no default file means the one made in code.
+export function soundSource(kind: SoundKind, choice: string | null, files: readonly string[]): string {
+  if (choice === BUILT_IN[kind]) return BUILT_IN[kind];
+  if (choice !== null && choice !== DEFAULT_SOUND && files.includes(`${kind}-${choice}`)) return `${kind}-${choice}`;
+  return files.includes(kind) ? kind : BUILT_IN[kind];
 }
 
-// How long the tornado shakes: as long as the family's tornado sound, or 2.5 s for the built-in one.
+// How long the tornado shakes: as long as its sound, or 2.5 s for the batucada made in code.
 export function tornadoSeconds(): number {
-  return family.get("tornado")?.duration ?? 2.5;
+  return family.get(soundSource("tornado", picked.tornado, [...family.keys()]))?.duration ?? 2.5;
 }
 
-export function availableNudges(): string[] {
-  return nudgeChoices([...family.keys()]);
+export function availableSounds(kind: SoundKind): string[] {
+  return soundChoices(kind, [...family.keys()]);
 }
 
-export function setNudgeSound(choice: string | null): void {
-  nudgeChoice = choice;
+export function setSound(kind: SoundKind, choice: string | null): void {
+  picked[kind] = choice;
 }
 
 export function unlockSound(): void {
@@ -61,15 +63,10 @@ export function unlockSound(): void {
 export function playNudge(tornado: boolean): void {
   if (ctx === null || ctx.state !== "running") return;
   const start = ctx.currentTime + 0.03;
-  if (tornado) {
-    const own = family.get("tornado");
-    if (own !== undefined) playBuffer(ctx, own, start);
-    else batucadaKuduro(ctx, start);
-    return;
-  }
-  const source = nudgeSource(nudgeChoice, [...family.keys()]);
-  const own = family.get(source);
+  const kind: SoundKind = tornado ? "tornado" : "nudge";
+  const own = family.get(soundSource(kind, picked[kind], [...family.keys()]));
   if (own !== undefined) playBuffer(ctx, own, start);
+  else if (tornado) batucadaKuduro(ctx, start);
   else fallingPots(ctx, start);
 }
 

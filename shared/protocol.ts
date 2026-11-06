@@ -59,8 +59,10 @@ export type ClientMessage =
   | { type: "topic"; channel: string; topic: string }
   | { type: "status"; status: Status; note: string }
   | { type: "typing"; channel: string; typing: boolean } // true at most every few seconds; false when the box empties
+  | { type: "typing"; to: string; typing: boolean } // the same, in a private chat
   | { type: "nudge"; channel: string; nick: string; tornado: boolean } // shake someone's screen (/abanar, /tornado)
   | { type: "nudge"; channel: string; everyone: true; tornado: boolean } // the whole channel (/abanar todos)
+  | { type: "nudge"; to: string; tornado: boolean } // in a private chat, MSN style
   | { type: "msg"; to: string; kind: MessageKind; text: string } // a private message (/msg Kota olá)
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string }; // /chinela Kota; /batuque has no nick
@@ -76,7 +78,9 @@ export type ServerMessage =
   | { type: "topic"; channel: string; topic: string; nick: string }
   | { type: "presence"; nick: string; status: Status; note: string }
   | { type: "typing"; channel: string; nick: string; typing: boolean } // never saved; clients hide it after a few seconds
+  | { type: "typing"; dm: true; nick: string; typing: boolean } // `nick` is typing to you in a private chat
   | { type: "nudge"; channel: string; from: string; to: string | null; tornado: boolean } // only `to` shakes; null = everyone but `from`
+  | { type: "nudge"; dm: true; from: string; to: string; tornado: boolean } // in a private chat, to both sides
   | ({ type: "message" } & ChatMessage) // in a private channel: not saved, id 0
   // Until accounts (phase 4) anyone can take a free nick, so nothing private is saved: DMs and
   // private channels live in memory only, and reach only people online right now.

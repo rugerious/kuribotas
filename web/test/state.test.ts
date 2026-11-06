@@ -334,3 +334,21 @@ test("a chinela flies across the open channel; only its target is hit; a batuque
   const elsewhere = apply(arrived(), { type: "throw", channel: "#futebol", from: "Pai", to: "Guest-1", item: "chinela" });
   assert.equal(elsewhere.thrown, null); // not the open channel: just the line there
 });
+
+test("in a private chat, a nudge lands in its tab and typing shows there", () => {
+  let s = apply(arrived(), { type: "nudge", dm: true, from: "Pai", to: "Guest-1", tornado: false });
+  assert.equal(texts(s.rooms.find((r) => r.name === "Pai")?.lines ?? []).at(-1), "*** Pai nudged Guest-1! 📳");
+  assert.deepEqual(s.nudged, { key: s.seq, tornado: false });
+  s = apply(s, { type: "typing", dm: true, nick: "Pai", typing: true });
+  assert.deepEqual(typingIn(s.rooms.find((r) => r.name === "Pai")), ["Pai"]);
+  const mine = apply(arrived(), { type: "nudge", dm: true, from: "Guest-1", to: "Mãe", tornado: true });
+  assert.equal(mine.nudged, null); // I sent it
+  assert.equal(texts(mine.rooms.find((r) => r.name === "Mãe")?.lines ?? []).at(-1), "*** Guest-1 sent a TORNADO to Mãe! 🌪️");
+});
+
+test("in a private chat, the message clears the typing line, like in a channel", () => {
+  let s = apply(arrived(), dm("Pai", "Guest-1", "olá"), { type: "typing", dm: true, nick: "Pai", typing: true });
+  assert.deepEqual(typingIn(s.rooms.find((r) => r.name === "Pai")), ["Pai"]);
+  s = apply(s, dm("Pai", "Guest-1", "estás em casa?"));
+  assert.deepEqual(typingIn(s.rooms.find((r) => r.name === "Pai")), []);
+});
