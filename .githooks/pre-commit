@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Never commit straight onto main: every change goes branch -> PR -> CI -> merge.
+if [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = "main" ]; then
+  echo "pre-commit: you are on main. Make a branch first: git switch -c feat/<name>" >&2
+  exit 1
+fi
+
 # Blocks a commit if the lines being added contain a forbidden value
 # (AWS account ID, email, domain, real family names...; case-insensitive). The values live OUTSIDE the repo,
 # in ~/.config/kuribotas/forbidden-patterns (one per line), so this script
