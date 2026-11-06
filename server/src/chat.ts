@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status } from "../../shared/protocol.ts";
+import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import type { Store } from "./store.ts";
 
 // One connected person. Nicks and statuses live in memory, IRC style (accounts come with invites, phase 4).
@@ -16,6 +16,8 @@ type Member = {
   tornadoAt: number | undefined; // when this person last sent a tornado
   groupNudgeAt: number | undefined; // ...a nudge to the whole channel
   groupTornadoAt: number | undefined; // ...a tornado to the whole channel
+  thrownAt: number[]; // recent chinelas, vassouras and colheres
+  batuqueAt: number | undefined; // the last batuque
 };
 
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
@@ -32,7 +34,11 @@ const NUDGE_WINDOW_MS = 10_000; // ...in this window
 const TORNADO_EVERY_MS = 60_000; // one tornado a minute: an event, not spam
 const GROUP_NUDGE_EVERY_MS = 60_000; // the whole channel: once a minute
 const GROUP_TORNADO_EVERY_MS = 300_000; // a tornado for everyone: once every 5 minutes
+const THROW_BURST = 3; // chinelas, vassouras and colheres together...
+const THROW_WINDOW_MS = 10_000; // ...in this window
+const BATUQUE_EVERY_MS = 60_000; // a batuque for the whole channel: once a minute
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
+const THROW_ITEMS: readonly ThrowItem[] = ["chinela", "vassoura", "colher", "batuque"];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
 const NICK_PATTERN = /^[\p{L}\p{N}_\-~*^.|[\]{}]{1,24}$/u;
@@ -79,6 +85,8 @@ export function attachChat(server: Server, store: Store): Chat {
       tornadoAt: undefined,
       groupNudgeAt: undefined,
       groupTornadoAt: undefined,
+      thrownAt: [],
+      batuqueAt: undefined,
     };
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
@@ -133,6 +141,33 @@ export function attachChat(server: Server, store: Store): Chat {
           return reject(me, "invite_only", channel, `${channel} is private: ask a member to /invite you`);
         }
         join(me, channel);
+        return;
+      }
+      case "throw": {
+        // Not saved, like a nudge. Everyone in the channel sees it fly; the target gets hit.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't throw things while invisible");
+        const now = Date.now();
+        if (msg.item === "batuque") {
+          const wait = me.batuqueAt === undefined ? 0 : me.batuqueAt + BATUQUE_EVERY_MS - now;
+          if (wait > 0) return reject(me, "batuque_too_soon", seconds(wait), "one batuque a minute");
+          me.batuqueAt = now;
+          sendToChannel(channel, { type: "throw", channel, from: me.nick, to: null, item: "batuque" });
+          return;
+        }
+        const wanted = (msg.nick ?? "").trim().toLowerCase();
+        const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
+        if (target === undefined) {
+          return reject(me, "no_such_nick", (msg.nick ?? "").trim(), `no ${msg.nick ?? ""} in ${channel}`);
+        }
+        me.thrownAt = me.thrownAt.filter((at) => now - at < THROW_WINDOW_MS);
+        const oldest = me.thrownAt[0];
+        if (me.thrownAt.length >= THROW_BURST && oldest !== undefined) {
+          return reject(me, "throw_too_soon", seconds(oldest + THROW_WINDOW_MS - now), "too many throws");
+        }
+        me.thrownAt.push(now);
+        sendToChannel(channel, { type: "throw", channel, from: me.nick, to: target.nick, item: msg.item });
         return;
       }
       case "invite": {
@@ -429,6 +464,14 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       const channel = str("channel");
       const nick = str("nick");
       return channel === undefined || nick === undefined ? undefined : { type: "invite", channel, nick };
+    }
+    case "throw": {
+      const channel = str("channel");
+      const item = THROW_ITEMS.find((i) => i === v.item);
+      const nick = str("nick");
+      if (channel === undefined || item === undefined) return undefined;
+      if (item === "batuque") return { type: "throw", channel, item };
+      return nick === undefined ? undefined : { type: "throw", channel, item, nick };
     }
     case "msg": {
       const to = str("to");

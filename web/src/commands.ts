@@ -1,4 +1,4 @@
-import type { ClientMessage, Status } from "../../shared/protocol.ts";
+import type { ClientMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { isDm, ROOM_COLOURS, type RoomColour } from "./state.ts";
 import { isLang, words, type Lang } from "./words.ts";
 
@@ -40,10 +40,25 @@ const ALIASES: Record<string, string> = {
   "/query": "/msg",
   "/convidar": "/invite",
   "/privado": "/private",
+  "/slipper": "/chinela",
+  "/broom": "/vassoura",
+  "/colherdepau": "/colher",
+  "/mariadasdores": "/colher",
+  "/maria": "/colher",
+  "/spoon": "/colher",
+  "/drums": "/batuque",
 };
 
 // In a private chat these make no sense (they belong to channels).
-const CHANNEL_ONLY = ["/topic", "/nudge", "/tornado", "/invite"];
+const CHANNEL_ONLY = ["/topic", "/nudge", "/tornado", "/invite", "/chinela", "/vassoura", "/colher", "/batuque"];
+
+// The family's arsenal, in both languages.
+const THROWS: Record<string, ThrowItem> = {
+  "/chinela": "chinela",
+  "/vassoura": "vassoura",
+  "/colher": "colher",
+  "/batuque": "batuque",
+};
 
 // "/abanar todos" nudges the whole channel (so a person can't be called "todos" and get nudged alone).
 const EVERYONE = ["todos", "all", "@todos", "@all", "*"];
@@ -88,6 +103,10 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       return { kind: "error", text: w.channelsOnly };
     }
   }
+
+  const item = THROWS[command];
+  if (item === "batuque") return send({ type: "throw", channel, item });
+  if (item !== undefined) return firstWord ? send({ type: "throw", channel, item, nick: firstWord }) : usage(w.examples.throw);
 
   const status = STATUS_COMMANDS[command];
   if (status !== undefined) return rest ? { kind: "status", status, note: rest } : { kind: "status", status };

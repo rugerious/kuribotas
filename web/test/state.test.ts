@@ -321,3 +321,16 @@ test("guest nicks are never remembered as a device's nick", () => {
   assert.equal(isGuestNick("Estraga_Lar"), false);
   assert.equal(isGuestNick("Kamba-Rita"), false);
 });
+
+test("a chinela flies across the open channel; only its target is hit; a batuque hits everyone", () => {
+  const s = apply(arrived(), { type: "throw", channel: "#mujimbo", from: "Pai", to: "Guest-1", item: "chinela" });
+  assert.equal(texts(s.rooms[0]?.lines ?? []).at(-1), "*** Pai threw a slipper at Guest-1! 🩴💨");
+  assert.deepEqual(s.thrown, { key: s.seq, item: "chinela", atMe: true });
+  const other = apply(arrived(), { type: "throw", channel: "#mujimbo", from: "Pai", to: "Mãe", item: "colher" });
+  assert.equal(other.thrown?.atMe, false); // I see it fly, Mãe gets the TOC
+  const drums = apply(arrived(), { type: "throw", channel: "#mujimbo", from: "Pai", to: null, item: "batuque" });
+  assert.equal(texts(drums.rooms[0]?.lines ?? []).at(-1), "*** Pai started a drum session in #mujimbo! 🥁🥁🥁");
+  assert.equal(drums.thrown?.atMe, true);
+  const elsewhere = apply(arrived(), { type: "throw", channel: "#futebol", from: "Pai", to: "Guest-1", item: "chinela" });
+  assert.equal(elsewhere.thrown, null); // not the open channel: just the line there
+});

@@ -162,3 +162,21 @@ test("/privado makes a private channel; /invite lets someone in (here, or a chan
   });
   assert.equal(parseInput("/invite Kota", "Mãe", "pt").kind, "error"); // in a DM, say which channel
 });
+
+test("/chinela, /vassoura and /colher aim at someone; /batuque is for everyone; not in a private chat", () => {
+  assert.deepEqual(parseInput("/chinela Kota", here, "pt"), {
+    kind: "send",
+    msg: { type: "throw", channel: here, item: "chinela", nick: "Kota" },
+  });
+  assert.deepEqual(parseInput("/spoon Kota", here, "en"), {
+    kind: "send",
+    msg: { type: "throw", channel: here, item: "colher", nick: "Kota" },
+  });
+  assert.deepEqual(parseInput("/batuque", here, "pt"), { kind: "send", msg: { type: "throw", channel: here, item: "batuque" } });
+  assert.deepEqual(parseInput("/mariadasdores Kota", here, "pt"), {
+    kind: "send",
+    msg: { type: "throw", channel: here, item: "colher", nick: "Kota" },
+  });
+  assert.deepEqual(parseInput("/vassoura", here, "pt"), { kind: "error", text: "Usa assim: /chinela | /vassoura | /mariadasdores <nick>" });
+  assert.equal(parseInput("/chinela Kota", "Kota", "pt").kind, "error");
+});

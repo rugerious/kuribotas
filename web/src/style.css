@@ -534,9 +534,139 @@ input:focus-visible {
 }
 
 /* Fewer moving parts for people who asked their phone for that. */
+/* Chinela, vassoura, colher, batuque: drawn with emoji, moved by CSS. The overlay never takes clicks. */
+.throw {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 10;
+}
+.throw .thing {
+  position: absolute;
+  font-size: 72px;
+  line-height: 1;
+}
+.throw .hit {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%) scale(0);
+  font: 400 72px/1 var(--display);
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  text-shadow: 0 4px 0 var(--bg), 0 0 24px rgba(0, 0, 0, 0.6);
+  animation: hit 0.6s ease-out forwards;
+}
+.throw-chinela .thing {
+  left: 0;
+  top: 35%;
+  animation: chinela 0.9s linear forwards;
+}
+.throw-chinela .hit {
+  animation-delay: 0.42s;
+}
+.throw-vassoura .thing {
+  right: 0;
+  bottom: 12%;
+  font-size: 96px;
+  animation: vassoura 1.2s ease-in-out forwards;
+}
+.throw-vassoura .hit {
+  animation-delay: 0.5s;
+}
+.throw-colher .thing {
+  left: calc(50% - 30px);
+  top: 0;
+  animation: colher 1s ease-in forwards;
+}
+.throw .spoon {
+  display: block;
+  width: 60px;
+  height: 180px;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+}
+.throw-colher .hit {
+  animation-delay: 0.45s;
+}
+.throw-batuque .thing {
+  left: calc(50% - 48px);
+  top: 32%;
+  font-size: 96px;
+  animation: batuque 0.4s ease-in-out 6;
+}
+.throw-batuque .hit {
+  animation: hit 0.6s ease-out 0.2s forwards;
+}
+@keyframes chinela {
+  0% { transform: translate(-15vw, 0) rotate(0deg); }
+  47% { transform: translate(calc(50vw - 36px), 0) rotate(560deg); }
+  55% { transform: translate(calc(50vw - 46px), 4vh) rotate(600deg); }
+  100% { transform: translate(55vw, 70vh) rotate(760deg); opacity: 0; }
+}
+@keyframes vassoura {
+  0% { transform: translateX(20vw) rotate(-20deg); }
+  25% { transform: translateX(-25vw) rotate(25deg); }
+  45% { transform: translateX(-45vw) rotate(-20deg); }
+  65% { transform: translateX(-65vw) rotate(25deg); }
+  100% { transform: translateX(-120vw) rotate(-10deg); }
+}
+@keyframes colher {
+  0% { transform: translateY(-20vh) rotate(-60deg); }
+  45% { transform: translateY(30vh) rotate(30deg); }
+  60% { transform: translateY(22vh) rotate(-10deg); }
+  100% { transform: translateY(110vh) rotate(160deg); }
+}
+@keyframes batuque {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25) rotate(-6deg); }
+}
+@keyframes hit {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+  30% { transform: translate(-50%, -50%) scale(1.3) rotate(-4deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1) rotate(-4deg); opacity: 0; }
+}
+/* The target feels it: a jolt timed to the hit, or the whole screen pulsing to the batuque. */
+.app.hit-chinela {
+  animation: jolt 0.3s linear 0.42s;
+}
+.app.hit-colher {
+  animation: bonk 0.3s linear 0.45s;
+}
+.app.hit-vassoura {
+  animation: jolt 0.5s linear 0.5s;
+}
+.app.hit-batuque {
+  animation: pulse 0.4s ease-in-out 6;
+}
+@keyframes jolt {
+  0%, 100% { transform: none; }
+  25% { transform: translate(14px, -4px) rotate(1deg); }
+  60% { transform: translate(-10px, 3px) rotate(-0.8deg); }
+}
+@keyframes bonk {
+  0%, 100% { transform: none; }
+  30% { transform: translateY(12px) scale(0.99); }
+  65% { transform: translateY(-4px); }
+}
+@keyframes pulse {
+  0%, 100% { transform: none; }
+  50% { transform: scale(1.015); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
+  }
+  /* Less motion asked for: the line in the chat is enough. */
+  .throw,
+  .app[class*="hit-"] {
+    display: contents;
+    animation: none;
+  }
+  .throw .thing,
+  .throw .hit {
+    display: none;
   }
   /* No shaking for people who asked their phone for less motion: a flash of colour instead. */
   .app.shake-nudge,

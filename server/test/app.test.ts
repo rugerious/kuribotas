@@ -563,3 +563,41 @@ test("an invite to a public channel is only a friendly notice", limits, async ()
   a.c.ws.close();
   b.c.ws.close();
 });
+
+test("a chinela flies across the channel and hits its target; three per 10 s", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  const c = await arrive();
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "chinela", nick: b.nick.toLowerCase() });
+  const seen = await until(c.c, ofType("throw")); // a bystander sees it fly too
+  assert.deepEqual(seen, { type: "throw", channel: "#mujimbo", from: a.nick, to: b.nick, item: "chinela" });
+  assert.equal((await until(b.c, ofType("throw"))).to, b.nick);
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "vassoura", nick: b.nick });
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "colher", nick: b.nick });
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "chinela", nick: b.nick }); // the 4th: too soon
+  const got: string[] = [];
+  while (got.length < 4) {
+    const m = await until(a.c, (x) => x.type === "throw" || x.type === "error");
+    got.push(m.type === "error" ? String(m.code) : String(m.item));
+  }
+  assert.deepEqual(got, ["chinela", "vassoura", "colher", "throw_too_soon"]);
+  for (const x of [a, b, c]) x.c.ws.close();
+});
+
+test("batuque is for the whole channel, once a minute; no throwing while invisible or at nobody", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "batuque" });
+  assert.deepEqual(await until(b.c, ofType("throw")), { type: "throw", channel: "#mujimbo", from: a.nick, to: null, item: "batuque" });
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "batuque" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["batuque_too_soon", "60"]);
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "chinela", nick: "Ninguém" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", "Ninguém"]);
+  send(a.c, { type: "throw", channel: "#mujimbo", item: "panela", nick: b.nick }); // unknown item: ignored
+  send(b.c, { type: "status", status: "invisible", note: "" });
+  await until(a.c, (m) => m.type === "quit" && m.nick === b.nick);
+  send(b.c, { type: "throw", channel: "#mujimbo", item: "colher", nick: a.nick });
+  assert.equal((await until(b.c, ofType("error"))).code, "invisible_no_nudge");
+  a.c.ws.close();
+  b.c.ws.close();
+});
