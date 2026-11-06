@@ -19,6 +19,7 @@ type Someone = {
   groupTornadoAt: number | undefined; // ...a tornado to the whole channel
   thrownAt: number[]; // recent chinelas, vassouras and colheres
   batuqueAt: number | undefined; // the last batuque
+  saidAt: number[]; // their recent messages (channels and DMs), to stop a flood
 };
 
 // One open connection: a phone, a computer. Each device has its own tabs (channels); nick and status
@@ -77,6 +78,8 @@ const GROUP_TORNADO_EVERY_MS = 300_000; // a tornado for everyone: once every 5 
 const THROW_BURST = 3; // chinelas, vassouras and colheres together...
 const THROW_WINDOW_MS = 10_000; // ...in this window
 const BATUQUE_EVERY_MS = 60_000; // a batuque for the whole channel: once a minute
+const MESSAGE_BURST = 20; // messages (channels and DMs together) a person may send...
+const MESSAGE_WINDOW_MS = 10_000; // ...in this window: plenty for a conversation, not for a flood
 const MENTION_PUSH_EVERY_MS = 20_000; // at most one mention notification per device in this time
 const MAX_PUSH_TEXT = 140; // characters of a message shown in a notification
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
@@ -155,6 +158,7 @@ export function attachChat(
       groupTornadoAt: undefined,
       thrownAt: [],
       batuqueAt: undefined,
+      saidAt: [],
     };
     people.set(person.id, who);
     who.nick = person.nick; // the database is the truth (a nick changed on another device)
@@ -285,6 +289,7 @@ export function attachChat(
         if (text.length === 0 || text.length > MAX_TEXT_LENGTH) return;
         const target = findVisible(msg.to, me);
         if (target === undefined) return reject(me, "no_such_nick", msg.to.trim(), `nobody called ${msg.to.trim()}`);
+        if (tooFast(me)) return;
         const dm: ServerMessage = { type: "dm", from: me.nick, to: target.nick, kind: msg.kind, text, at: new Date().toISOString() };
         sendPerson(target.who, dm); // every device of theirs, and of mine
         if (target.who !== who) sendPerson(who, dm);
@@ -309,6 +314,7 @@ export function attachChat(
         if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
         const text = msg.text.trim();
         if (text.length === 0 || text.length > MAX_TEXT_LENGTH) return; // ignored, as before
+        if (tooFast(me)) return;
         // Saved first: if this throws, nothing is broadcast (not saved = not delivered).
         // Speaking while invisible is allowed: the message shows, the person stays out of the list.
         // Private channels are never saved (until accounts): their messages get id 0.
@@ -567,6 +573,19 @@ export function attachChat(
         else if (status >= 400) console.warn(`push refused: ${status}`);
       })
       .catch((err: unknown) => console.warn(`push failed: ${err instanceof Error ? err.name : "error"}`));
+  }
+
+  // More than 20 messages in 10 s is a stuck key or a script, not a conversation: refuse (and say so).
+  function tooFast(me: Member): boolean {
+    const now = Date.now();
+    me.who.saidAt = me.who.saidAt.filter((at) => now - at < MESSAGE_WINDOW_MS);
+    const oldest = me.who.saidAt[0];
+    if (me.who.saidAt.length >= MESSAGE_BURST && oldest !== undefined) {
+      reject(me, "too_fast", seconds(oldest + MESSAGE_WINDOW_MS - now), "too many messages");
+      return true;
+    }
+    me.who.saidAt.push(now);
+    return false;
   }
 
   // Personal nudges (channel or private chat): 3 quick ones per 10 s, one tornado a minute.

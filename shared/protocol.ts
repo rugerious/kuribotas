@@ -59,6 +59,7 @@ export type ErrorCode =
   | "cant_remove_op" // take their @ away first
   | "cant_deop_self" // another @ has to do it
   | "no_such_device" // not one of your devices (detail = the id)
+  | "too_fast" // more than 20 messages in 10 s; detail = seconds to wait
   | "internal";
 
 // What a client may send. The web UI turns "/nick Rita", "/join #futebol", "/me waves",

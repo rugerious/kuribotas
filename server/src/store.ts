@@ -56,6 +56,7 @@ export type Store = {
   setTopic: (name: string, topic: string) => Channel;
   addMessage: (msg: NewMessage) => StoredMessage;
   recentMessages: (channel: string, limit: number) => StoredMessage[];
+  deleteMessagesBefore: (at: string) => number; // how many went
   savePush: (row: PushRow) => void; // insert or replace, by endpoint
   deletePush: (endpoint: string) => void;
   pushFor: (nick: string) => PushRow[]; // any case
@@ -200,6 +201,8 @@ export function openStore(path: string): Store {
     LIMIT :limit
   `);
 
+  const removeOldMessages = db.prepare("DELETE FROM messages WHERE created_at < :at");
+
   const upsertPush = db.prepare(`
     INSERT INTO push_subscriptions (endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at, session_hash)
     VALUES (:endpoint, :p256dh, :auth, :nick, :channels, :quiet, :lang, :at, :session)
@@ -292,6 +295,7 @@ export function openStore(path: string): Store {
         .all({ channel, limit })
         .map((row) => toMessage(row))
         .reverse(), // oldest first, ready to display
+    deleteMessagesBefore: (at) => Number(removeOldMessages.run({ at }).changes),
     savePush: (row) => {
       upsertPush.run({ ...row, channels: JSON.stringify(row.channels), quiet: row.quiet ? 1 : 0 });
     },
