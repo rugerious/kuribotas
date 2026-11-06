@@ -5,6 +5,7 @@ import {
   colourOf,
   initialState,
   isDm,
+  isGuestNick,
   reduce,
   ROOM_COLOURS,
   TYPING_SHOWN_MS,
@@ -313,4 +314,10 @@ test("a private channel is marked, and invites are shown to both sides", () => {
     texts(s.rooms.find((r) => r.name === "#primos")?.lines ?? []).at(-1),
     "*** Pai invited you to #bula 🔒 Type /join #bula to go in",
   );
+});
+
+test("guest nicks are never remembered as a device's nick", () => {
+  assert.equal(isGuestNick("Kamba-12"), true);
+  assert.equal(isGuestNick("Estraga_Lar"), false);
+  assert.equal(isGuestNick("Kamba-Rita"), false);
 });
