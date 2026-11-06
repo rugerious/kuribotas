@@ -38,6 +38,59 @@ const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 const COLOURS_KEY = "kuribotas.colours";
 const LANG_KEY = "kuribotas.lang";
 const SHAKE_KEY = "kuribotas.shake"; // "off" = no nudges on this device
+// Notifications on this device (/notificacoes). The browser keeps the subscription; we remember the
+// choice so the app can tell the server again after every reconnection (nick and channels may change).
+const PUSH_KEY = "kuribotas.push";
+
+function pushWanted(): boolean {
+  try {
+    return localStorage.getItem(PUSH_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function savePushWanted(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(PUSH_KEY, "on");
+    else localStorage.removeItem(PUSH_KEY);
+  } catch {
+    // not saved: notifications still work, but the app won't re-send them after a reload
+  }
+}
+
+const pushSupported = (): boolean =>
+  isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+function fromBase64url(text: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// The browser's subscription for this server's key (a new key, e.g. after a reinstall, means a new one).
+async function pushSubscription(create: boolean): Promise<PushSubscription | null> {
+  const reg = await navigator.serviceWorker.ready;
+  const { publicKey } = (await (await fetch("/push/key")).json()) as { publicKey: string };
+  const key = fromBase64url(publicKey);
+  const existing = await reg.pushManager.getSubscription();
+  const current = existing?.options.applicationServerKey;
+  const same = current != null && current.byteLength === key.length && new Uint8Array(current).every((b, i) => b === key[i]);
+  if (existing !== null && same) return existing;
+  if (existing !== null) await existing.unsubscribe();
+  return create ? reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }) : null;
+}
+
+const subscriptionMessage = (sub: PushSubscription, lang: Lang): ClientMessage => {
+  const json = sub.toJSON();
+  return {
+    type: "push",
+    subscription: { endpoint: sub.endpoint, keys: { p256dh: json.keys?.p256dh ?? "", auth: json.keys?.auth ?? "" } },
+    lang,
+  };
+};
+
 // This device's nudge and tornado sounds (/som, /som tornado).
 const SOUND_KEYS: Record<SoundKind, string> = { nudge: "kuribotas.sound", tornado: "kuribotas.sound.tornado" };
 const NICK_KEY = "kuribotas.nick"; // the nick this device asks for on arrival
@@ -256,6 +309,14 @@ export function App() {
     const reconnecting = msg.type === "welcome" && stateRef.current.rooms.length > 0;
     dispatch({ type: "server", msg, at: now() });
     if (reconnecting) rejoin(ws);
+    // Tell the server again which device to notify (only if this device turned notifications on).
+    if (msg.type === "welcome" && pushWanted() && pushSupported() && Notification.permission === "granted") {
+      pushSubscription(false)
+        .then((sub) => {
+          if (sub !== null && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(subscriptionMessage(sub, stateRef.current.lang)));
+        })
+        .catch(() => {});
+    }
   };
 
   useEffect(() => saveColours(state.colours), [state.colours]);
@@ -375,6 +436,30 @@ export function App() {
         saveShake(parsed.on);
         setShakeOn(parsed.on);
         return dispatch({ type: "local", text: w.events.shake(parsed.on), tone: "info", at: now() });
+      case "notify": {
+        const say = (text: string, tone: "info" | "error" = "info") => dispatch({ type: "local", text, tone, at: now() });
+        if (!pushSupported()) return say(w.events.notifyUnsupported, "error");
+        if (!parsed.on) {
+          savePushWanted(false);
+          send({ type: "push", subscription: null, lang: state.lang });
+          pushSubscription(false)
+            .then((sub) => sub?.unsubscribe())
+            .catch(() => {});
+          return say(w.events.notify(false));
+        }
+        // Asked straight from the command (a key press), as browsers require for this question.
+        Notification.requestPermission()
+          .then(async (permission) => {
+            if (permission !== "granted") return say(w.events.notifyDenied, "error");
+            const sub = await pushSubscription(true);
+            if (sub === null) return say(w.events.notifyUnsupported, "error");
+            savePushWanted(true);
+            send(subscriptionMessage(sub, state.lang));
+            say(w.events.notify(true));
+          })
+          .catch(() => say(w.events.notifyUnsupported, "error"));
+        return;
+      }
       case "openDm":
         return dispatch({ type: "openDm", nick: parsed.nick });
       case "closeDm":

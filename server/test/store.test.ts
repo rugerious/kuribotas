@@ -130,3 +130,27 @@ test("a version-1 database is upgraded and keeps its messages", () => {
     store.close();
   });
 });
+
+test("devices asking for notifications are kept by endpoint, found by nick (any case) and by channel", () => {
+  const store = openStore(":memory:");
+  const row = {
+    endpoint: "https://fcm.googleapis.com/fcm/send/a",
+    p256dh: "key",
+    auth: "secret",
+    nick: "Kota",
+    channels: ["#mujimbo", "#futebol"],
+    quiet: false,
+    lang: "pt" as const,
+    at: "2026-12-24T20:00:00.000Z",
+  };
+  store.savePush(row);
+  store.savePush({ ...row, endpoint: "https://fcm.googleapis.com/fcm/send/b", nick: "Mãe", channels: ["#jantar"] });
+  assert.deepEqual(store.pushFor("kota"), [row]);
+  assert.deepEqual(store.pushInChannel("#futebol").map((r) => r.nick), ["Kota"]);
+  store.savePush({ ...row, nick: "Estraga_Lar", quiet: true }); // the same device, now under another nick
+  assert.deepEqual(store.pushFor("Kota"), []);
+  assert.equal(store.pushFor("Estraga_Lar")[0]?.quiet, true);
+  store.deletePush(row.endpoint);
+  assert.deepEqual(store.pushInChannel("#mujimbo"), []);
+  store.close();
+});

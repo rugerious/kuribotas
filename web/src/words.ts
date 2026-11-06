@@ -57,6 +57,9 @@ export type Words = {
     tornadoAll: (from: string, channel: string) => string;
     shake: (on: boolean) => string;
     sound: (name: string, tornado: boolean) => string;
+    notify: (on: boolean) => string;
+    notifyUnsupported: string;
+    notifyDenied: string;
     invitedYou: (from: string, channel: string) => string;
     youInvited: (to: string, channel: string) => string;
     sounds: (current: string, options: readonly string[], tornado: boolean) => string;
@@ -66,7 +69,7 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -154,6 +157,13 @@ const pt: Words = {
     shake: (on) =>
       on ? "Abanões ligados neste aparelho 📳" : "Abanões desligados neste aparelho: vês a linha, sem tremer nem som",
     sound: (name, t) => `Som ${t ? "do tornado" : "do abanão"} neste aparelho: ${name} 🔊`,
+    notify: (on) =>
+      on
+        ? "Notificações ligadas neste aparelho 🔔 Vais saber quando te chamam pelo nick ou te abanam, mesmo com a app fechada (No biolo = silêncio)"
+        : "Notificações desligadas neste aparelho 🔕",
+    notifyUnsupported:
+      "Este aparelho não deixa receber notificações aqui. Precisam de https (nos telemóveis da família, a partir da fase 5); no iPhone, instala a app primeiro (Partilhar → Adicionar ao ecrã principal)",
+    notifyDenied: "O browser está a bloquear as notificações deste site: muda isso nas definições do site e tenta outra vez",
     invitedYou: (from, ch) => `${from} convidou-te para ${ch} 🔒 Escreve /join ${ch} para entrar`,
     youInvited: (to, ch) => `Convidaste ${to} para ${ch}`,
     sounds: (current, options, t) =>
@@ -182,9 +192,10 @@ const pt: Words = {
     throw_too_soon: (d) => `Calma com a chinela! Espera ${d} s`,
     batuque_too_soon: (d) => `O batuque ainda está a ecoar 🥁 Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
+    push_invalid: () => "Este aparelho mandou um endereço de notificações que não reconheço. Tenta /notificacoes sim outra vez",
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -203,6 +214,7 @@ const pt: Words = {
     "/abanoes nao — sem abanões neste aparelho (/abanoes sim para voltar)",
     "/som — o som do abanão neste aparelho (/som 3, /som panelas) · /som tornado — o do tornado",
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
+    "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
     "/msg <nick> [mensagem] — conversa privada 💬 (não fica guardada)",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
     "/lingua en — English (neste aparelho)",
@@ -282,6 +294,13 @@ const en: Words = {
     tornadoAll: (from, ch) => `${from} sent a TORNADO to everyone in ${ch}! 🌪️🌪️`,
     shake: (on) => (on ? "Nudges on for this device 📳" : "Nudges off for this device: you'll see the line, no shaking or sound"),
     sound: (name, t) => `${t ? "Tornado" : "Nudge"} sound on this device: ${name} 🔊`,
+    notify: (on) =>
+      on
+        ? "Notifications on for this device 🔔 You'll know when someone calls your nick or nudges you, even with the app closed (Busy = quiet)"
+        : "Notifications off for this device 🔕",
+    notifyUnsupported:
+      "This device can't get notifications here. They need https (on the family's phones, from phase 5); on an iPhone, install the app first (Share → Add to Home Screen)",
+    notifyDenied: "The browser is blocking notifications from this site: change it in the site settings and try again",
     invitedYou: (from, ch) => `${from} invited you to ${ch} 🔒 Type /join ${ch} to go in`,
     youInvited: (to, ch) => `You invited ${to} to ${ch}`,
     sounds: (current, options, t) =>
@@ -310,9 +329,10 @@ const en: Words = {
     throw_too_soon: (d) => `easy with the slipper! wait ${d} s`,
     batuque_too_soon: (d) => `the drums are still echoing 🥁 wait ${d} s`,
     internal: () => "something went wrong, please try again",
+    push_invalid: () => "this device sent a notification address I don't recognise. Try /notifications on again",
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -331,6 +351,7 @@ const en: Words = {
     "/shake off — no nudges on this device (/shake on to undo)",
     "/sound — this device's nudge sound (/sound 3, /sound panelas) · /sound tornado — the tornado's",
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
+    "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",
     "/msg <nick> [message] — private chat 💬 (not saved)",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
     "/lang pt — Angolan Portuguese (on this device)",

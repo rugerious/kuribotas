@@ -46,6 +46,7 @@ export type ErrorCode =
   | "invite_only" // a private channel: ask a member for /invite
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
+  | "push_invalid" // a notification subscription that isn't from a real push service
   | "internal";
 
 // What a client may send. The web UI turns "/nick Rita", "/join #futebol", "/me waves",
@@ -65,7 +66,9 @@ export type ClientMessage =
   | { type: "nudge"; to: string; tornado: boolean } // in a private chat, MSN style
   | { type: "msg"; to: string; kind: MessageKind; text: string } // a private message (/msg Kota olá)
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
-  | { type: "throw"; channel: string; item: ThrowItem; nick?: string }; // /chinela Kota; /batuque has no nick
+  | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
+  // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
+  | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" };
 
 // What the server sends.
 export type ServerMessage =

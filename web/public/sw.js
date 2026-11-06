@@ -1,6 +1,6 @@
 /* global self, caches, fetch, URL */
 // Kuribotas' service worker. It makes the app installable and lets it open without network (the app
-// shell comes from this cache; the chat then waits for the connection). Phase 3.3 adds notifications.
+// shell comes from this cache; the chat then waits for the connection) and shows notifications.
 // Plain JavaScript on purpose: it runs in its own worker, outside the bundle.
 
 const CACHE = "kuribotas-shell-v1";
@@ -41,5 +41,36 @@ self.addEventListener("fetch", (event) => {
         return response;
       })
       .catch(() => caches.match(request).then((hit) => hit ?? caches.match("/"))),
+  );
+});
+
+// A notification from the server (a mention, a nudge, a chinela…): already encrypted end to end,
+// the push service only carried it. Same tag = it replaces the previous one instead of piling up.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    // not ours: show the bare app name
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Kuribotas", {
+      body: data.body || "",
+      // a tag makes it replace the previous one (and still buzz); renotify without a tag is an error
+      ...(data.tag ? { tag: data.tag, renotify: true } : {}),
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+    }),
+  );
+});
+
+// Tapping it opens the app (or brings it to the front if it's already open).
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((w) => "focus" in w);
+      return open ? open.focus() : self.clients.openWindow("/");
+    }),
   );
 });
