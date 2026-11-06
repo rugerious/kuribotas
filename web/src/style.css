@@ -223,6 +223,19 @@ body::after {
 .st-busy { background: var(--error); box-shadow: inset 0 0 0 3px var(--error), inset 0 0 0 5px var(--panel); }
 .st-invisible { background: transparent; border: 2px dashed var(--muted); }
 
+/* The status in words, in its colour: your picker in the header (on a phone it's the only sign,
+   the dot doesn't fit) and the line under each name in the people list. */
+.pick-online, .word-online { color: var(--green); }
+.pick-away, .word-away { color: var(--amber); }
+.pick-busy, .word-busy { color: var(--error); }
+.pick-invisible, .word-invisible { color: var(--muted); }
+.pick-online { border-color: var(--green); }
+.pick-away { border-color: var(--amber); }
+.pick-busy { border-color: var(--error); }
+.pick-invisible { border-style: dashed; }
+.status-pick option { color: var(--ink); } /* the open list stays readable */
+.status-word { font-style: normal; font-weight: 500; }
+
 /* Channel tabs: each in its own colour */
 .tabs {
   display: flex;

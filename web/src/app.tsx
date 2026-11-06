@@ -30,7 +30,9 @@ import { Peeker } from "./peeker.tsx";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
-const SIGNED_OUT = 4401; // the server's close code for a session that ended (server/src/chat.ts)
+const SIGNED_OUT = 4401;
+// A coloured sign in the status picker: a phone's own list (Android, iPhone) can't be coloured by CSS.
+const STATUS_ICON: Record<Status, string> = { online: "🟢", away: "🟡", busy: "🔴", invisible: "👻" }; // the server's close code for a session that ended (server/src/chat.ts)
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 
@@ -535,14 +537,14 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
             </button>
             <select
               id="status"
-              class="status-pick"
+              class={`status-pick pick-${state.status}`}
               value={state.status}
               disabled={!online}
               onChange={(e) => setStatus(e.currentTarget.value as Status)}
             >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {w.status[s]}
+                  {STATUS_ICON[s]} {w.status[s]}
                 </option>
               ))}
             </select>
@@ -731,7 +733,7 @@ function PersonRow({
         {isMe && <span class="you"> {w.ui.you}</span>}
       </span>
       <span class="person-status">
-        {w.status[member.status]}
+        <span class={`status-word word-${member.status}`}>{w.status[member.status]}</span>
         {member.note && ` · ${member.note}`}
       </span>
       {/* On their own line, so a long nick never pushes them out of the panel. */}
