@@ -27,6 +27,10 @@ export type Words = {
     dm: (nick: string) => string; // the 💬 button's label
     privateChat: (nick: string) => string; // the bar above a private chat
     privateChannel: string; // after the topic of a private channel
+    tornado: (nick: string) => string; // the 🌪️ button's label
+    editNote: string; // the ✏️ button
+    notePlaceholder: string;
+    noteSave: string;
     connection: Record<"connecting" | "open" | "closed", string>;
   };
   events: {
@@ -100,6 +104,10 @@ const pt: Words = {
     dm: (nick) => `Conversa privada com ${nick}`,
     privateChat: (nick) => `💬 Conversa privada com ${nick} · não fica guardada`,
     privateChannel: "🔒 privado · não fica guardado",
+    tornado: (nick) => `Mandar um tornado a ${nick}`,
+    editNote: "Mudar a tua frase",
+    notePlaceholder: "A tua frase (vazio = nenhuma)",
+    noteSave: "OK",
     typing: (n) =>
       n.length === 0
         ? ""
@@ -208,6 +216,10 @@ const en: Words = {
     dm: (nick) => `Private chat with ${nick}`,
     privateChat: (nick) => `💬 Private chat with ${nick} · not saved`,
     privateChannel: "🔒 private · not saved",
+    tornado: (nick) => `Send ${nick} a tornado`,
+    editNote: "Change your note",
+    notePlaceholder: "Your note (empty = none)",
+    noteSave: "OK",
     typing: (n) =>
       n.length === 0
         ? ""

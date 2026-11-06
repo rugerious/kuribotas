@@ -28,6 +28,11 @@ export type Room = {
   private: boolean; // a private channel 🔒, or a DM: nothing in it is saved on the server
 };
 
+// The server's guest nicks (Kamba-1, Kamba-2…): never remembered as "my nick" on a device.
+export function isGuestNick(nick: string): boolean {
+  return /^Kamba-\d+$/.test(nick);
+}
+
 // A DM's room is named after the other person (no "#"); channels always start with "#".
 export function isDm(name: string): boolean {
   return !name.startsWith("#");

@@ -115,6 +115,47 @@ body::after {
   white-space: nowrap;
   max-width: 34vw;
 }
+.note-edit-toggle {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+}
+.note-edit-toggle[aria-expanded="true"] {
+  border-color: var(--room);
+}
+.note-edit-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.note-editor {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.note-editor input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: 16px var(--mono);
+}
+.note-editor button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--room);
+  background: var(--room);
+  color: var(--bg);
+  font: 500 13px var(--mono);
+  cursor: pointer;
+}
 .status-pick {
   font: 500 13px var(--mono);
   min-height: 36px;
@@ -301,7 +342,7 @@ body::after {
 .nudge.dm {
   margin-left: auto;
 }
-.nudge.dm + .nudge {
+.nudge.dm ~ .nudge {
   margin-left: 4px;
 }
 .nudge {
@@ -445,6 +486,32 @@ input:focus-visible {
 }
 
 /* Phones: the people list slides over the messages when "People" is tapped. */
+/* Small phones: the header holds logo, nick, ✏️ and status, so everything gets a little tighter
+   (the status dot is hidden here: the picker already says the status). */
+@media (max-width: 480px) {
+  .bar {
+    gap: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .brand {
+    font-size: 22px;
+    letter-spacing: 0.05em;
+  }
+  .me {
+    gap: 6px;
+  }
+  .me > .dot {
+    display: none;
+  }
+  .note-edit-toggle {
+    min-width: 32px;
+  }
+  .status-pick {
+    padding: 0 4px;
+  }
+}
+
 @media (max-width: 719px) {
   .people {
     display: none;

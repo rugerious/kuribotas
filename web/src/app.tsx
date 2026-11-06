@@ -5,6 +5,7 @@ import {
   colourOf,
   initialState,
   isDm,
+  isGuestNick,
   reduce,
   ROOM_COLOURS,
   typingIn,
@@ -33,6 +34,26 @@ const COLOURS_KEY = "kuribotas.colours";
 const LANG_KEY = "kuribotas.lang";
 const SHAKE_KEY = "kuribotas.shake"; // "off" = no nudges on this device
 const SOUND_KEY = "kuribotas.sound"; // this device's nudge sound (/som)
+const NICK_KEY = "kuribotas.nick"; // the nick this device asks for on arrival
+// On a reload the new page often arrives before the server sees the old one leave, so the saved nick
+// is still "taken" by ourselves for a moment: ask again quietly, a little later each time.
+const NICK_RETRIES = 3;
+
+function loadNick(): string | null {
+  try {
+    return localStorage.getItem(NICK_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveNick(nick: string): void {
+  try {
+    localStorage.setItem(NICK_KEY, nick);
+  } catch {
+    // not saved: the nick still works until the page is closed
+  }
+}
 
 function loadSound(): string | null {
   try {
@@ -118,6 +139,9 @@ export function App() {
   const [showPeople, setShowPeople] = useState(false);
   const [shakeOn, setShakeOn] = useState(loadShake);
   const [shaking, setShaking] = useState<"" | "nudge" | "tornado">("");
+  const [editingNote, setEditingNote] = useState(false);
+  const askedForNick = useRef(false);
+  const autoNick = useRef<{ nick: string; tries: number } | null>(null); // the saved nick we're asking for
   const socket = useRef<WebSocket | null>(null);
   const w = words(state.lang);
 
@@ -139,12 +163,42 @@ export function App() {
       } catch {
         return;
       }
+      const pending = autoNick.current;
+      if (pending !== null) {
+        if (msg.type === "nick" && msg.nick === pending.nick) autoNick.current = null;
+        const ours = msg.type === "error" && msg.code === "nick_taken" && msg.detail.toLowerCase() === pending.nick.toLowerCase();
+        if (ours && pending.tries <= NICK_RETRIES) {
+          const retry = pending.tries * 1000;
+          pending.tries += 1;
+          setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "nick", nick: pending.nick }));
+          }, retry);
+          return; // not an error yet: probably our own old page, still leaving
+        }
+        if (ours) autoNick.current = null; // really taken by someone else: say so (below)
+      }
       dispatch({ type: "server", msg, at: now() });
     });
     return () => ws.close();
   }, []);
 
   useEffect(() => saveColours(state.colours), [state.colours]);
+
+  // A nick sticks to this device: on arrival (still a Kamba-N) ask for the saved one once; if it is
+  // taken right now, the server says so and you stay Kamba-N. Accounts (phase 4) will reserve it.
+  useEffect(() => {
+    if (state.nick === "") return;
+    if (!askedForNick.current) {
+      askedForNick.current = true;
+      const saved = loadNick();
+      if (saved !== null && saved !== state.nick && isGuestNick(state.nick)) {
+        autoNick.current = { nick: saved, tries: 1 };
+        send({ type: "nick", nick: saved });
+      }
+      return;
+    }
+    if (!isGuestNick(state.nick)) saveNick(state.nick);
+  }, [state.nick]);
 
   // Sound needs one touch first (a browser rule); any tap or key press will do.
   useEffect(() => {
@@ -259,6 +313,17 @@ export function App() {
               {w.ui.yourStatus}
             </label>
             <span class={`dot st-${state.status}`} aria-hidden="true" />
+            <button
+              type="button"
+              class="note-edit-toggle"
+              aria-label={w.ui.editNote}
+              title={w.ui.editNote}
+              aria-expanded={editingNote}
+              disabled={!online}
+              onClick={() => setEditingNote(!editingNote)}
+            >
+              ✏️
+            </button>
             <select
               id="status"
               class="status-pick"
@@ -275,6 +340,18 @@ export function App() {
           </div>
         )}
       </header>
+
+      {editingNote && online && (
+        <NoteEditor
+          note={state.note}
+          w={w}
+          onSave={(note) => {
+            send({ type: "status", status: state.status, note });
+            setEditingNote(false);
+          }}
+          onCancel={() => setEditingNote(false)}
+        />
+      )}
 
       <nav class="tabs" aria-label="Canais / Channels">
         {state.rooms.map((r) => (
@@ -329,7 +406,7 @@ export function App() {
             me={state.nick}
             open={showPeople}
             canNudge={online}
-            onNudge={(nick) => send({ type: "nudge", channel: room.name, nick, tornado: false })}
+            onNudge={(nick, tornado) => send({ type: "nudge", channel: room.name, nick, tornado })}
             onDm={(nick) => dispatch({ type: "openDm", nick })}
             w={w}
           />
@@ -394,7 +471,7 @@ function People({
   me: string;
   open: boolean;
   canNudge: boolean;
-  onNudge: (nick: string) => void;
+  onNudge: (nick: string, tornado: boolean) => void;
   onDm: (nick: string) => void;
   w: Words;
 }) {
@@ -430,7 +507,7 @@ function PersonRow({
   member: Member;
   isMe: boolean;
   canNudge: boolean;
-  onNudge: (nick: string) => void;
+  onNudge: (nick: string, tornado: boolean) => void;
   onDm: (nick: string) => void;
   w: Words;
 }) {
@@ -458,9 +535,21 @@ function PersonRow({
             aria-label={w.ui.nudge(member.nick)}
             title={w.ui.nudge(member.nick)}
             disabled={!canNudge}
-            onClick={() => onNudge(member.nick)}
+            onClick={() => onNudge(member.nick, false)}
           >
             📳
+          </button>
+        )}
+        {!isMe && (
+          <button
+            type="button"
+            class="nudge"
+            aria-label={w.ui.tornado(member.nick)}
+            title={w.ui.tornado(member.nick)}
+            disabled={!canNudge}
+            onClick={() => onNudge(member.nick, true)}
+          >
+            🌪️
           </button>
         )}
       </span>
@@ -469,6 +558,48 @@ function PersonRow({
         {member.note && ` · ${member.note}`}
       </span>
     </li>
+  );
+}
+
+// The ✏️ box under the bar: the line under your name, for people who don't know /frase.
+function NoteEditor({
+  note,
+  w,
+  onSave,
+  onCancel,
+}: {
+  note: string;
+  w: Words;
+  onSave: (note: string) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(note);
+  return (
+    <form
+      class="note-editor"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(text.trim());
+      }}
+    >
+      <label class="visually-hidden" for="note">
+        {w.ui.editNote}
+      </label>
+      <input
+        id="note"
+        value={text}
+        maxLength={80}
+        autoComplete="off"
+        enterKeyHint="done"
+        placeholder={w.ui.notePlaceholder}
+        ref={(el) => el?.focus()}
+        onInput={(e) => setText(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+      <button type="submit">{w.ui.noteSave}</button>
+    </form>
   );
 }
 
