@@ -14,15 +14,17 @@ import {
   type RoomColour,
 } from "./state.ts";
 import {
-  availableNudges,
+  availableSounds,
   DEFAULT_SOUND,
   playNudge,
   playThrow,
-  setNudgeSound,
+  setSound,
+  type SoundKind,
   tornadoSeconds,
   unlockSound,
   vibrate,
 } from "./sound.ts";
+import { FAMILY_EMOJI } from "./emoji.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
@@ -34,7 +36,8 @@ const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 const COLOURS_KEY = "kuribotas.colours";
 const LANG_KEY = "kuribotas.lang";
 const SHAKE_KEY = "kuribotas.shake"; // "off" = no nudges on this device
-const SOUND_KEY = "kuribotas.sound"; // this device's nudge sound (/som)
+// This device's nudge and tornado sounds (/som, /som tornado).
+const SOUND_KEYS: Record<SoundKind, string> = { nudge: "kuribotas.sound", tornado: "kuribotas.sound.tornado" };
 const NICK_KEY = "kuribotas.nick"; // the nick this device asks for on arrival
 // On a reload the new page often arrives before the server sees the old one leave, so the saved nick
 // is still "taken" by ourselves for a moment: ask again quietly, a little later each time.
@@ -73,24 +76,25 @@ function saveNick(nick: string): void {
   }
 }
 
-function loadSound(): string | null {
+function loadSound(kind: SoundKind): string | null {
   try {
-    return localStorage.getItem(SOUND_KEY);
+    return localStorage.getItem(SOUND_KEYS[kind]);
   } catch {
     return null;
   }
 }
 
-function saveSound(name: string): void {
+function saveSound(kind: SoundKind, name: string): void {
   try {
-    if (name === DEFAULT_SOUND) localStorage.removeItem(SOUND_KEY);
-    else localStorage.setItem(SOUND_KEY, name);
+    if (name === DEFAULT_SOUND) localStorage.removeItem(SOUND_KEYS[kind]);
+    else localStorage.setItem(SOUND_KEYS[kind], name);
   } catch {
     // not saved: the choice still applies until the page is closed
   }
 }
 
-setNudgeSound(loadSound());
+setSound("nudge", loadSound("nudge"));
+setSound("tornado", loadSound("tornado"));
 
 function loadShake(): boolean {
   try {
@@ -308,14 +312,15 @@ export function App() {
       case "closeDm":
         return dispatch({ type: "closeDm", nick: parsed.nick });
       case "sound": {
-        const options = availableNudges();
+        const kind: SoundKind = parsed.tornado ? "tornado" : "nudge";
+        const options = availableSounds(kind);
         const say = (text: string, tone: "info" | "error" = "info") => dispatch({ type: "local", text, tone, at: now() });
-        if (parsed.name === undefined) return say(w.events.sounds(loadSound() ?? DEFAULT_SOUND, options));
+        if (parsed.name === undefined) return say(w.events.sounds(loadSound(kind) ?? DEFAULT_SOUND, options, parsed.tornado));
         if (!options.includes(parsed.name)) return say(w.unknownSound(parsed.name, options), "error");
-        saveSound(parsed.name);
-        setNudgeSound(parsed.name);
-        playNudge(false); // hear it straight away
-        return say(w.events.sound(parsed.name));
+        saveSound(kind, parsed.name);
+        setSound(kind, parsed.name);
+        playNudge(parsed.tornado); // hear it straight away
+        return say(w.events.sound(parsed.name, parsed.tornado));
       }
       case "lang":
         saveLang(parsed.lang);
@@ -326,10 +331,10 @@ export function App() {
   };
 
   // Invisible people don't say they're typing (the server would drop it anyway).
-  // "is typing" is only for channels for now (private chats: later).
+  // "is typing", in a channel or a private chat (invisible people don't say it; the server would drop it).
   const typing = (channel: string, active: boolean): void => {
-    if (isDm(channel)) return;
-    if (state.status !== "invisible" || !active) send({ type: "typing", channel, typing: active });
+    if (state.status === "invisible" && active) return;
+    send(isDm(channel) ? { type: "typing", to: channel, typing: active } : { type: "typing", channel, typing: active });
   };
 
   const room = state.rooms.find((r) => r.name === state.active);
@@ -668,6 +673,8 @@ function InputBar({
   w: Words;
 }) {
   const [text, setText] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const box = useRef<HTMLInputElement>(null);
   // Where we last said "is typing", and when: repeated every few seconds, stopped once.
   const told = useRef<{ channel: string; at: number } | null>(null);
 
@@ -691,23 +698,58 @@ function InputBar({
     }
   };
 
+  // An emoji goes where the cursor is, and the box keeps the focus (so the phone keyboard stays up).
+  const addEmoji = (emoji: string): void => {
+    const input = box.current;
+    const at = input?.selectionStart ?? text.length;
+    const end = input?.selectionEnd ?? at;
+    changed(text.slice(0, at) + emoji + text.slice(end));
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(at + emoji.length, at + emoji.length);
+    });
+  };
+
   return (
+    <>
+      {showEmoji && (
+        <div class="emoji-bar" role="group" aria-label={w.ui.emoji}>
+          {FAMILY_EMOJI.map((emoji) => (
+            <button key={emoji} type="button" disabled={disabled} onClick={() => addEmoji(emoji)}>
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
     <form
       class="input"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit(text);
         setText("");
+        setShowEmoji(false);
         // A message clears "is typing" for everyone; a command needs an explicit stop.
         if (isMessage(text)) told.current = null;
         else stopTyping();
       }}
     >
+      <button
+        type="button"
+        class="emoji-toggle"
+        aria-label={w.ui.emoji}
+        title={w.ui.emoji}
+        aria-expanded={showEmoji}
+        disabled={disabled}
+        onClick={() => setShowEmoji(!showEmoji)}
+      >
+        😀
+      </button>
       <label class="visually-hidden" for="message">
         {w.ui.messageTo(channel)}
       </label>
       <input
         id="message"
+        ref={box}
         value={text}
         onInput={(e) => changed(e.currentTarget.value)}
         placeholder={w.ui.placeholder(channel)}
@@ -720,6 +762,7 @@ function InputBar({
         {w.ui.send}
       </button>
     </form>
+    </>
   );
 }
 

@@ -12,6 +12,7 @@ const soundsDir = join(root, "sounds");
 mkdirSync(soundsDir);
 writeFileSync(join(soundsDir, "nudge.mp3"), "ID3 fake mp3");
 writeFileSync(join(soundsDir, "nudge-3.mp3"), "ID3 piece three");
+writeFileSync(join(soundsDir, "tornado-amapiano.mp3"), "ID3 dancing tornado");
 writeFileSync(join(soundsDir, "Nudge-X.mp3"), "wrong case: ignored");
 writeFileSync(join(soundsDir, "secret.mp3"), "not for you");
 writeFileSync(join(root, "kuribotas.db"), "the database");
@@ -40,7 +41,8 @@ test("a family sound is served as audio; /sounds/available says which exist", as
   assert.equal(await res.text(), "ID3 fake mp3");
   assert.equal(await (await fetch(`${url}/sounds/nudge-3.mp3`)).text(), "ID3 piece three");
   const available = await fetch(`${url}/sounds/available`);
-  assert.deepEqual(await available.json(), { files: ["nudge", "nudge-3"] });
+  assert.deepEqual(await available.json(), { files: ["nudge", "nudge-3", "tornado-amapiano"] });
+  assert.equal(await (await fetch(`${url}/sounds/tornado-amapiano.mp3`)).text(), "ID3 dancing tornado");
 });
 
 test("only the known names are served: no other files, no escaping the folder", async () => {

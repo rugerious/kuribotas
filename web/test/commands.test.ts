@@ -115,10 +115,12 @@ test("/abanar and /tornado nudge someone in the open channel; /abanoes switches 
 });
 
 test("/som lists or picks this device's nudge sound", () => {
-  assert.deepEqual(parseInput("/som", here, "pt"), { kind: "sound" });
-  assert.deepEqual(parseInput("/som 3", here, "pt"), { kind: "sound", name: "3" });
-  assert.deepEqual(parseInput("/sound Panelas", here, "en"), { kind: "sound", name: "panelas" });
-  assert.deepEqual(parseInput("/som padrão", here, "pt"), { kind: "sound", name: "padrao" });
+  assert.deepEqual(parseInput("/som", here, "pt"), { kind: "sound", tornado: false });
+  assert.deepEqual(parseInput("/som 3", here, "pt"), { kind: "sound", tornado: false, name: "3" });
+  assert.deepEqual(parseInput("/som tornado", here, "pt"), { kind: "sound", tornado: true });
+  assert.deepEqual(parseInput("/som Tornado Amapiano", here, "pt"), { kind: "sound", tornado: true, name: "amapiano" });
+  assert.deepEqual(parseInput("/sound Panelas", here, "en"), { kind: "sound", tornado: false, name: "panelas" });
+  assert.deepEqual(parseInput("/som padrão", here, "pt"), { kind: "sound", tornado: false, name: "padrao" });
 });
 
 test("/abanar todos and /tornado all go to the whole channel", () => {
@@ -144,7 +146,9 @@ test("/msg sends a DM, or just opens the tab; in a DM tab, text and /me go to th
     msg: { type: "msg", to: "Kota", kind: "me", text: "acena" },
   });
   assert.deepEqual(parseInput("/bazar", "Kota", "pt"), { kind: "closeDm", nick: "Kota" });
-  assert.deepEqual(parseInput("/abanar Kota", "Kota", "pt"), { kind: "error", text: "Isso é só nos canais (aqui é conversa privada)" });
+  assert.deepEqual(parseInput("/abanar", "Kota", "pt"), { kind: "send", msg: { type: "nudge", to: "Kota", tornado: false } });
+  assert.deepEqual(parseInput("/tornado", "Kota", "pt"), { kind: "send", msg: { type: "nudge", to: "Kota", tornado: true } });
+  assert.deepEqual(parseInput("/topico olá", "Kota", "pt"), { kind: "error", text: "Isso é só nos canais (aqui é conversa privada)" });
 });
 
 test("/privado makes a private channel; /invite lets someone in (here, or a channel named)", () => {

@@ -29,6 +29,7 @@ export type Words = {
     privateChannel: string; // after the topic of a private channel
     tornado: (nick: string) => string; // the 🌪️ button's label
     editNote: string; // the ✏️ button
+    emoji: string; // the 😀 button
     hit: Record<ThrowItem, string>; // the big word when it lands
     notePlaceholder: string;
     noteSave: string;
@@ -55,10 +56,10 @@ export type Words = {
     batuque: (from: string, channel: string) => string;
     tornadoAll: (from: string, channel: string) => string;
     shake: (on: boolean) => string;
-    sound: (name: string) => string;
+    sound: (name: string, tornado: boolean) => string;
     invitedYou: (from: string, channel: string) => string;
     youInvited: (to: string, channel: string) => string;
-    sounds: (current: string, options: readonly string[]) => string;
+    sounds: (current: string, options: readonly string[], tornado: boolean) => string;
     disconnected: string;
   };
   errors: Record<ErrorCode, (detail: string) => string>;
@@ -109,6 +110,7 @@ const pt: Words = {
     privateChannel: "🔒 privado · não fica guardado",
     tornado: (nick) => `Mandar um tornado a ${nick}`,
     editNote: "Mudar a tua frase",
+    emoji: "Emoji da família",
     hit: { chinela: "PÁ!", vassoura: "XÔ!", colher: "TOC!", batuque: "TUM TUM TÁ!" },
     notePlaceholder: "A tua frase (vazio = nenhuma)",
     noteSave: "OK",
@@ -149,10 +151,13 @@ const pt: Words = {
     tornadoAll: (from, ch) => `${from} mandou um TORNADO para o ${ch} inteiro! 🌪️🌪️`,
     shake: (on) =>
       on ? "Abanões ligados neste aparelho 📳" : "Abanões desligados neste aparelho: vês a linha, sem tremer nem som",
-    sound: (name) => `Som do abanão neste aparelho: ${name} 🔊`,
+    sound: (name, t) => `Som ${t ? "do tornado" : "do abanão"} neste aparelho: ${name} 🔊`,
     invitedYou: (from, ch) => `${from} convidou-te para ${ch} 🔒 Escreve /join ${ch} para entrar`,
     youInvited: (to, ch) => `Convidaste ${to} para ${ch}`,
-    sounds: (current, options) => `Sons do abanão: ${options.join(" · ")} (agora: ${current}). Escolhe com /som <nome>`,
+    sounds: (current, options, t) =>
+      t
+        ? `Sons do tornado: ${options.join(" · ")} (agora: ${current}). Escolhe com /som tornado <nome>`
+        : `Sons do abanão: ${options.join(" · ")} (agora: ${current}). Escolhe com /som <nome> · tornados: /som tornado`,
     disconnected: "Ligação perdida. Recarrega a página para voltares.",
   },
   errors: {
@@ -192,7 +197,7 @@ const pt: Words = {
     "/tornado <nick> — 🌪️ um por minuto",
     "/abanar todos — o canal inteiro (1 por minuto) · /tornado todos — 1 em cada 5 minutos",
     "/abanoes nao — sem abanões neste aparelho (/abanoes sim para voltar)",
-    "/som — ver e escolher o som do abanão neste aparelho (/som 3, /som panelas)",
+    "/som — o som do abanão neste aparelho (/som 3, /som panelas) · /som tornado — o do tornado",
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/msg <nick> [mensagem] — conversa privada 💬 (não fica guardada)",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
@@ -232,6 +237,7 @@ const en: Words = {
     privateChannel: "🔒 private · not saved",
     tornado: (nick) => `Send ${nick} a tornado`,
     editNote: "Change your note",
+    emoji: "Family emoji",
     hit: { chinela: "SMACK!", vassoura: "SHOO!", colher: "BONK!", batuque: "BOOM BOOM TAK!" },
     notePlaceholder: "Your note (empty = none)",
     noteSave: "OK",
@@ -271,10 +277,13 @@ const en: Words = {
     batuque: (from, ch) => `${from} started a drum session in ${ch}! 🥁🥁🥁`,
     tornadoAll: (from, ch) => `${from} sent a TORNADO to everyone in ${ch}! 🌪️🌪️`,
     shake: (on) => (on ? "Nudges on for this device 📳" : "Nudges off for this device: you'll see the line, no shaking or sound"),
-    sound: (name) => `Nudge sound on this device: ${name} 🔊`,
+    sound: (name, t) => `${t ? "Tornado" : "Nudge"} sound on this device: ${name} 🔊`,
     invitedYou: (from, ch) => `${from} invited you to ${ch} 🔒 Type /join ${ch} to go in`,
     youInvited: (to, ch) => `You invited ${to} to ${ch}`,
-    sounds: (current, options) => `Nudge sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound <name>`,
+    sounds: (current, options, t) =>
+      t
+        ? `Tornado sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound tornado <name>`
+        : `Nudge sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound <name> · tornadoes: /sound tornado`,
     disconnected: "Disconnected. Reload the page to reconnect.",
   },
   errors: {
@@ -314,7 +323,7 @@ const en: Words = {
     "/tornado <nick> — 🌪️ one a minute",
     "/nudge all — the whole channel (once a minute) · /tornado all — once every 5 minutes",
     "/shake off — no nudges on this device (/shake on to undo)",
-    "/sound — see and pick this device's nudge sound (/sound 3, /sound panelas)",
+    "/sound — this device's nudge sound (/sound 3, /sound panelas) · /sound tornado — the tornado's",
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/msg <nick> [message] — private chat 💬 (not saved)",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",

@@ -264,6 +264,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       const next: State = {
         ...updateRoom(opened, other, (r) => ({
           ...r,
+          typing: r.typing.filter((x) => x.nick !== msg.from), // the message they were typing has arrived
           lines: trim([...r.lines, { kind: "message", key: seq, msg: chat }]),
           unread: r.name === state.active || msg.from === state.nick ? r.unread : r.unread + 1,
         })),
@@ -293,6 +294,13 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     }
 
     case "nudge": {
+      if ("dm" in msg) {
+        // A private chat's nudge lands in that chat's tab (opened if needed), like MSN's window.
+        const other = msg.from === state.nick ? msg.to : msg.from;
+        const text = (msg.tornado ? w.events.tornado : w.events.nudge)(msg.from, msg.to);
+        const next = addEvent(withDm(state, other), other, text, at, "info");
+        return msg.to === state.nick ? { ...next, nudged: { key: next.seq, tornado: msg.tornado } } : next;
+      }
       const everyone = msg.to === null;
       const text = everyone
         ? (msg.tornado ? w.events.tornadoAll : w.events.nudgeAll)(msg.from, msg.channel)
@@ -317,7 +325,8 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     case "typing": {
       if (msg.nick === state.nick) return state;
       const until = Date.parse(at) + TYPING_SHOWN_MS;
-      return updateRoom(state, msg.channel, (r) => ({
+      const room = "dm" in msg ? msg.nick : msg.channel; // a private chat's room is named after the person
+      return updateRoom(state, room, (r) => ({
         ...r,
         typing: msg.typing ? [...notTyping(r, msg.nick).typing, { nick: msg.nick, until }] : notTyping(r, msg.nick).typing,
       }));
