@@ -164,3 +164,11 @@ data/
 backups/
 # Web Push (VAPID) private keys
 vapid*.json
+# Terraform: state, plans, local settings (the lock file IS committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+backend.hcl
+*.tfvars
+!*.tfvars.example

@@ -1,0 +1,53 @@
+#!/bin/bash
+# First boot of the Kuribotas server (Amazon Linux 2023, ARM). Logs: /var/log/cloud-init-output.log
+set -euo pipefail
+
+# 1 GB of swap: the instance has 0.5 GB of memory, and a pull or an update must not run out.
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=1024 status=none
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo "/swapfile none swap defaults 0 0" >> /etc/fstab
+fi
+
+dnf install -y docker
+systemctl enable --now docker
+
+# Docker Compose isn't packaged for Amazon Linux: the release binary, pinned and checked by its hash.
+COMPOSE_VERSION=v5.6.1
+COMPOSE_SHA256=42cfa75f51ad0ccf290bad37899e0038a8c10a0069e85233ecc1d53e3ff1347d
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL -o /tmp/docker-compose "https://github.com/docker/compose/releases/download/$${COMPOSE_VERSION}/docker-compose-linux-aarch64"
+echo "$${COMPOSE_SHA256}  /tmp/docker-compose" | sha256sum -c -
+install -m 755 /tmp/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+
+install -d -m 750 /opt/kuribotas
+
+# deploy.sh: settings from SSM Parameter Store into a 0600 .env, the compose file of that same commit
+# (so the app and its compose file always match), then pull and (re)start.
+cat > /opt/kuribotas/deploy.sh <<'DEPLOY'
+#!/bin/bash
+# (Re)starts Kuribotas with the settings in SSM Parameter Store. Run as root: /opt/kuribotas/deploy.sh
+set -euo pipefail
+cd /opt/kuribotas
+get() { aws ssm get-parameter --region ${region} --name "$1" --with-decryption --query Parameter.Value --output text; }
+umask 077
+{
+  echo "KURIBOTAS_TAG=$(get /kuribotas/image-tag)"
+  echo "PUBLIC_URL=$(get /kuribotas/public-url)"
+  echo "TUNNEL_TOKEN=$(get /kuribotas/tunnel-token)"
+} > .env.new
+mv .env.new .env
+commit=$(sed -n 's/^KURIBOTAS_TAG=sha-//p' .env)
+curl -fsSL -o compose.yaml.new "https://raw.githubusercontent.com/rugerious/kuribotas/$commit/deploy/compose.yaml"
+mv compose.yaml.new compose.yaml
+install -d -o 1000 -g 1000 -m 700 data # the image's "node" user owns the data
+docker compose pull --quiet
+docker compose up -d --remove-orphans
+docker image prune -f
+DEPLOY
+chmod 700 /opt/kuribotas/deploy.sh
+
+# Start now if the settings are already there; if not, run deploy.sh once they are.
+/opt/kuribotas/deploy.sh || echo "deploy.sh failed (settings missing?): run it again once /kuribotas/* exist"
