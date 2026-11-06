@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–2 done (foundations, basic chat, web client, the Messenger side) · 🚧 **Phase 3 — phone without effort** (reconnection and install as an app done; next: notifications). Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–3 done (foundations, basic chat, web client, the Messenger side, the phone: reconnection, install as an app, notifications) · next: **Phase 4 — invites and security**. Target: in use by the family for Christmas 2026.
 
 ## What it is
 
@@ -32,7 +32,7 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 | 0 | Foundations: repo, TypeScript monorepo, CI → GHCR, Dependabot | 3–4 | ✅ |
 | 1 | Basic chat: WebSocket server, channels, SQLite history, slash commands, retro UI | 7–10 | ✅ |
 | 2 | Messenger side: statuses, private chats, nudge and tornado, typing, family sounds, the arsenal (chinela, vassoura, Maria das Dores, batuque), emoji bar | 6–9 | ✅ (~7 h) |
-| 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | 🚧 |
+| 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ✅ (~3 h 30) |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ⏳ |
 | 4b | Fun after accounts: stickers (family packs + our catchphrase pack), `/roll`, `/8ball`, December `/neve`; saved history for private chats | 2–4 | ⏳ |
 | 5 | Deploy: always-on server, Cloudflare Tunnel, backups, load test | 4–7 | ⏳ |
