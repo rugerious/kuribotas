@@ -46,6 +46,8 @@ export type Words = {
     deviceTitle: (nick: string) => string;
     deviceText: string;
     checking: string;
+    codeLabel: string;
+    codeButton: string;
     errors: Record<
       "invite_unknown" | "invite_used" | "invite_expired" | "invalid_nick" | "nick_taken" | "too_many_tries" | "other" | "offline",
       string
@@ -82,10 +84,17 @@ export type Words = {
     disconnected: string;
     reconnected: string;
     lostPrivate: (channels: string) => string;
+    inviteLink: (link: string, copied: boolean) => string;
+    deviceLink: (link: string, code: string, copied: boolean) => string;
+    devicesTitle: string;
+    device: (id: number, name: string, since: string, seen: string, current: boolean) => string;
+    devicesHelp: string;
+    role: (by: string, nick: string, op: boolean) => string;
+    removed: (nick: string, by: string) => string;
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -155,6 +164,8 @@ const pt: Words = {
     deviceTitle: (nick) => `Entrar como ${nick} neste aparelho?`,
     deviceText: "Este link junta este aparelho à tua conta. Se não foste tu que o pediste, fecha esta página.",
     checking: "a ver o convite…",
+    codeLabel: "Já entraste noutro aparelho? Escreve lá /aparelho e mete aqui o código:",
+    codeButton: "Usar código",
     errors: {
       invite_unknown: "Este link de convite não existe. Será que ficou cortado ao copiar?",
       invite_used: "Este convite já foi usado. Pede outro 🙏",
@@ -210,6 +221,16 @@ const pt: Words = {
     disconnected: "Ligação perdida. A voltar a ligar…",
     reconnected: "De volta! 🔌",
     lostPrivate: (chs) => `Ao perderes a ligação saíste de ${chs} 🔒 Pede um novo convite para voltar`,
+    inviteLink: (link, copied) =>
+      `Convite para uma pessoa nova 🎟️ Vale uma vez, durante 7 dias: manda-o só a quem queres cá${copied ? " (copiado ✓)" : ""}: ${link}`,
+    deviceLink: (link, code, copied) =>
+      `Para o teu outro aparelho (10 minutos): abre ${link}${copied ? " (copiado ✓)" : ""} ou mete o código ${code} na porta 🚪`,
+    devicesTitle: "Os teus aparelhos:",
+    device: (id, name, since, seen, current) =>
+      `[${id}] ${name || "aparelho"} · entrou ${since} · visto ${seen}${current ? " ← este" : ""}`,
+    devicesHelp: "Para tirar um (telemóvel perdido?): /xau <número>",
+    role: (by, nick, op) => (op ? `${by} deu @ a ${nick}` : `${by} tirou o @ a ${nick}`),
+    removed: (nick, by) => `${nick} foi expulso do Kuribotas por ${by}`,
   },
   errors: {
     invalid_nick: () => "Nick inválido: 1 a 24 letras, números ou _-~*^.|[]{} (sem espaços)",
@@ -230,9 +251,14 @@ const pt: Words = {
     batuque_too_soon: (d) => `O batuque ainda está a ecoar 🥁 Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
     push_invalid: () => "Este aparelho mandou um endereço de notificações que não reconheço. Tenta /notificacoes sim outra vez",
+    not_op: () => "Só um @ pode fazer isso",
+    no_such_person: (d) => `Ninguém no Kuribotas se chama ${d}`,
+    cant_remove_op: (d) => `${d} é @: tira-lhe o @ primeiro (/deop ${d})`,
+    cant_deop_self: () => "Não podes tirar o teu próprio @: pede a outro @",
+    no_such_device: (d) => `Não tens o aparelho ${d} (vê /aparelhos)`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -253,6 +279,8 @@ const pt: Words = {
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
     "/msg <nick> [mensagem] — conversa privada 💬 (não fica guardada)",
+    "/aparelho — juntar outro aparelho teu (link ou código, 10 minutos) · /aparelhos — os teus aparelhos · /xau — sair deste aparelho (/xau 2 tira outro)",
+    "/convite — (@) um link para trazer uma pessoa nova 🎟️ · /op · /deop <nick> — dar ou tirar @ · /expulsar <nick> — tirar alguém do Kuribotas",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
@@ -314,6 +342,8 @@ const en: Words = {
     deviceTitle: (nick) => `Sign in as ${nick} on this device?`,
     deviceText: "This link adds this device to your account. If you didn't ask for it, close this page.",
     checking: "checking the invite…",
+    codeLabel: "Already in on another device? Type /device there and enter the code here:",
+    codeButton: "Use code",
     errors: {
       invite_unknown: "This invite link doesn't exist. Maybe it got cut off when copied?",
       invite_used: "This invite has already been used. Ask for another 🙏",
@@ -368,6 +398,16 @@ const en: Words = {
     disconnected: "Connection lost. Reconnecting…",
     reconnected: "Back online! 🔌",
     lostPrivate: (chs) => `You left ${chs} when the connection dropped 🔒 ask for a new invite`,
+    inviteLink: (link, copied) =>
+      `Invite for one new person 🎟️ It works once, for 7 days: send it only to who you want here${copied ? " (copied ✓)" : ""}: ${link}`,
+    deviceLink: (link, code, copied) =>
+      `For your other device (10 minutes): open ${link}${copied ? " (copied ✓)" : ""} or enter the code ${code} at the door 🚪`,
+    devicesTitle: "Your devices:",
+    device: (id, name, since, seen, current) =>
+      `[${id}] ${name || "device"} · since ${since} · seen ${seen}${current ? " ← this one" : ""}`,
+    devicesHelp: "To remove one (lost phone?): /logout <number>",
+    role: (by, nick, op) => (op ? `${by} gave @ to ${nick}` : `${by} took @ from ${nick}`),
+    removed: (nick, by) => `${nick} was removed from Kuribotas by ${by}`,
   },
   errors: {
     invalid_nick: () => "invalid nick: use 1-24 letters, digits or _-~*^.|[]{} (no spaces)",
@@ -388,9 +428,14 @@ const en: Words = {
     batuque_too_soon: (d) => `the drums are still echoing 🥁 wait ${d} s`,
     internal: () => "something went wrong, please try again",
     push_invalid: () => "this device sent a notification address I don't recognise. Try /notifications on again",
+    not_op: () => "only an @ can do that",
+    no_such_person: (d) => `nobody in Kuribotas is called ${d}`,
+    cant_remove_op: (d) => `${d} is an @: take their @ first (/deop ${d})`,
+    cant_deop_self: () => "you can't drop your own @: ask another @",
+    no_such_device: (d) => `you have no device ${d} (see /devices)`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -411,6 +456,8 @@ const en: Words = {
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",
     "/msg <nick> [message] — private chat 💬 (not saved)",
+    "/device — add another device of yours (link or code, 10 minutes) · /devices — your devices · /logout — sign this device out (/logout 2 removes another)",
+    "/invitelink — (@) a link to bring in a new person 🎟️ · /op · /deop <nick> — give or take @ · /kick <nick> — remove someone from Kuribotas",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",

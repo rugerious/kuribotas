@@ -13,6 +13,6 @@ const admin = process.argv.includes("--admin");
 
 mkdirSync(dataDir, { recursive: true });
 const store = openStore(join(dataDir, "kuribotas.db"));
-const token = makeInvite(store, "person", { personId: null, role: admin ? "admin" : "member", createdBy: null });
+const { token } = makeInvite(store, "person", { personId: null, role: admin ? "admin" : "member", createdBy: null });
 store.close();
 console.log(`${admin ? "An @ invite" : "An invite"} for one person, valid for 7 days:\n${inviteLink(publicUrl, "person", token)}`);

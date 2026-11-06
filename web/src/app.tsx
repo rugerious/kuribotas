@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
-import type { ClientMessage, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import type { ClientMessage, Device, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { parseInput } from "./commands.ts";
 import {
   colourOf,
@@ -25,6 +25,7 @@ import {
   vibrate,
 } from "./sound.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
+import { showCode } from "./invite.ts";
 import { Peeker } from "./peeker.tsx";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
@@ -282,6 +283,8 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     } catch {
       return;
     }
+    if (msg.type === "link") return showLink(msg.kind, msg.token);
+    if (msg.type === "devices") return showDevices(msg.devices);
     const reconnecting = msg.type === "welcome" && stateRef.current.rooms.length > 0;
     dispatch({ type: "server", msg, at: now() });
     if (reconnecting) rejoin(ws);
@@ -293,6 +296,31 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         })
         .catch(() => {});
     }
+  };
+
+  // An invite or device link: shown only on this screen (never sent to the channel), and copied so it
+  // can go straight into WhatsApp. The token sits after "#", so it never reaches any server log.
+  const showLink = (kind: "person" | "device", token: string): void => {
+    const link = `${location.origin}/#${kind === "person" ? "convite" : "aparelho"}=${token}`;
+    const say = (copied: boolean): void => {
+      const t = words(stateRef.current.lang).events;
+      const text = kind === "person" ? t.inviteLink(link, copied) : t.deviceLink(link, showCode(token), copied);
+      dispatch({ type: "local", text, tone: "info", at: now() });
+    };
+    if (navigator.clipboard === undefined) return say(false);
+    navigator.clipboard.writeText(link).then(
+      () => say(true),
+      () => say(false),
+    );
+  };
+
+  const showDevices = (devices: Device[]): void => {
+    const lang = stateRef.current.lang;
+    const t = words(lang).events;
+    const when = (iso: string): string =>
+      new Date(iso).toLocaleString(lang === "pt" ? "pt-PT" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const lines = [t.devicesTitle, ...devices.map((d) => t.device(d.id, d.name, when(d.since), when(d.seen), d.current)), t.devicesHelp];
+    for (const text of lines) dispatch({ type: "local", text, tone: "info", at: now() });
   };
 
   useEffect(() => saveColours(state.colours), [state.colours]);
@@ -396,6 +424,19 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         saveShake(parsed.on);
         setShakeOn(parsed.on);
         return dispatch({ type: "local", text: w.events.shake(parsed.on), tone: "info", at: now() });
+      case "logout": {
+        // This device only. Its notifications stop too (the server forgets them with the session).
+        savePushWanted(false);
+        if (pushSupported()) {
+          pushSubscription(false)
+            .then((sub) => sub?.unsubscribe())
+            .catch(() => {});
+        }
+        fetch("/api/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+          .then(() => onSignedOut())
+          .catch(() => dispatch({ type: "local", text: w.errors.internal(""), tone: "error", at: now() }));
+        return;
+      }
       case "notify": {
         const say = (text: string, tone: "info" | "error" = "info") => dispatch({ type: "local", text, tone, at: now() });
         if (!pushSupported()) return say(w.events.notifyUnsupported, "error");
@@ -684,6 +725,7 @@ function PersonRow({
       <span class="person-line">
         {member.status === "invisible" ? <Peeker /> : <span class={`dot st-${member.status}`} aria-hidden="true" />}
         <span class={`person-nick ${nickClass(member.nick)}`} title={member.nick}>
+          {member.role === "admin" && <span class="op">@</span>}
           {member.nick}
         </span>
         {isMe && <span class="you"> {w.ui.you}</span>}

@@ -15,6 +15,9 @@ export type ChatMessage = {
   at: string; // ISO 8601, UTC
 };
 
+// Accounts (phase 4): "admin" is the family's @, who can invite new people.
+export type Role = "admin" | "member";
+
 // Presence, MSN style. The UI names them (in Portuguese: Na bardea, Já vorto, No biolo, A zongolar).
 // "invisible" is never sent to anyone else: to the others you look like you left.
 export type Status = "online" | "away" | "busy" | "invisible";
@@ -26,7 +29,11 @@ export type Member = {
   nick: string;
   status: Status;
   note: string; // the line under your name: a random caption or your own personal message
+  role?: Role; // "admin" shows as @Nick, IRC style
 };
+
+// One of your own devices (/aparelhos). `id` is what /xau <id> takes.
+export type Device = { id: number; name: string; since: string; seen: string; current: boolean };
 
 // Errors carry a code so each client can say them in its own language; `reason` is English, for logs.
 export type ErrorCode =
@@ -47,6 +54,11 @@ export type ErrorCode =
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
   | "push_invalid" // a notification subscription that isn't from a real push service
+  | "not_op" // only an @ may do that
+  | "no_such_person" // nobody with that nick has an account
+  | "cant_remove_op" // take their @ away first
+  | "cant_deop_self" // another @ has to do it
+  | "no_such_device" // not one of your devices (detail = the id)
   | "internal";
 
 // What a client may send. The web UI turns "/nick Rita", "/join #futebol", "/me waves",
@@ -68,10 +80,14 @@ export type ClientMessage =
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
-  | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" };
+  | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" }
+  | { type: "make_invite" } // an @ makes an invite link for a new person (/convite)
+  | { type: "make_device_link" } // a link and code to add another device of yours (/aparelho)
+  | { type: "devices" } // list your devices (/aparelhos)
+  | { type: "forget_device"; id: number } // sign one of your devices out (/xau 2)
+  | { type: "role"; nick: string; role: Role } // an @ gives or takes @ (/op, /deop)
+  | { type: "remove"; nick: string }; // an @ removes someone from Kuribotas (/expulsar)
 
-// Accounts (phase 4): "admin" is the family's @, who can invite new people.
-export type Role = "admin" | "member";
 
 // The small HTTP API around the chat. GET /api/me: who this device is signed in as.
 export type Me = { nick: string; role: Role };
@@ -112,4 +128,9 @@ export type ServerMessage =
   | { type: "dm"; from: string; to: string; kind: MessageKind; text: string; at: string } // to both sides
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
+  // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").
+  | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string }
+  | { type: "devices"; devices: Device[] } // only to you
+  | { type: "role"; nick: string; role: Role; by: string } // to everyone: someone got or lost @
+  | { type: "removed"; nick: string; by: string } // to everyone: an @ removed someone
   | { type: "error"; code: ErrorCode; detail: string; reason: string };

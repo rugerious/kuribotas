@@ -550,6 +550,11 @@ body::after {
   cursor: not-allowed;
 }
 
+/* An @ in the people list, IRC style */
+.op {
+  color: var(--amber);
+}
+
 /* The door and the welcome page: before the chat, one card in the middle */
 .gate {
   height: 100vh;
@@ -620,6 +625,19 @@ body::after {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
+}
+.gate-code {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.gate-code input {
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.gate-code button[type="submit"] {
+  background: transparent;
+  color: var(--amber);
 }
 .gate button[type="submit"]:disabled {
   opacity: 0.45;

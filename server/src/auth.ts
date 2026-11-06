@@ -19,17 +19,30 @@ const MAX_BODY_BYTES = 4096;
 export const newToken = (): string => randomBytes(32).toString("base64url"); // 256 bits: can't be guessed
 export const hashToken = (token: string): string => createHash("sha256").update(token).digest("hex");
 
-// Makes an invite and returns the token for the link (the database keeps only its hash).
+// A device code is short enough to type on a phone: 8 characters without look-alikes (no 0/O, 1/I),
+// shown as ABCD-EFGH. 40 bits, valid 10 minutes, and guesses are limited per address: out of reach.
+const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // 32 letters: each random byte maps evenly
+export const newCode = (): string => [...randomBytes(8)].map((b) => CODE_ALPHABET[b % 32]).join("");
+const CODE_PATTERN = /^[2-9A-HJ-NP-Z]{8}$/;
+// "abcd-efgh", "ABCD EFGH" → "ABCDEFGH"; a long token stays as it is.
+export const normaliseCode = (typed: string): string => {
+  const code = typed.toUpperCase().replace(/[\s-]/g, "");
+  return CODE_PATTERN.test(code) ? code : typed;
+};
+export const isCode = (key: string): boolean => CODE_PATTERN.test(key);
+
+// Makes an invite: a long token for a new person's link, a short code for your own other device.
+// Returns what goes in the link (the database keeps only its hash).
 export function makeInvite(
   store: Store,
   kind: InviteKind,
   who: { personId: number | null; role: Role; createdBy: number | null },
   now = Date.now(),
-): string {
-  const token = newToken();
+): { token: string; expiresAt: string } {
+  const token = kind === "device" ? newCode() : newToken();
   const expiresAt = new Date(now + INVITE_VALID_MS[kind]).toISOString();
   store.createInvite(hashToken(token), { kind, ...who, expiresAt }, new Date(now).toISOString());
-  return token;
+  return { token, expiresAt };
 }
 
 // The token goes after "#": browsers never send that part to a server, so it stays out of every log.
@@ -145,10 +158,20 @@ export function authRoutes(store: Store, options: AuthOptions) {
       return true;
     }
 
-    // What an invite link is, so the page can greet the newcomer (or say the link is no good).
-    const asked = /^\/api\/invite\/([A-Za-z0-9_-]{20,100})$/.exec(path);
+    // What an invite link (or a device code) is, so the page can greet the newcomer or say it's no good.
+    // Codes are short, so looking one up counts as a try, like using one.
+    const asked = /^\/api\/invite\/([A-Za-z0-9_-]{8,100})$/.exec(path);
     if (req.method === "GET" && asked !== null) {
-      const invite = store.invite(hashToken(asked[1] ?? ""));
+      const key = normaliseCode(asked[1] ?? "");
+      if (isCode(key) && tooMany(req)) {
+        fail(res, 429, "too_many_tries");
+        return true;
+      }
+      if (!isCode(key) && key.length < 20) {
+        fail(res, 404, "invite_unknown");
+        return true;
+      }
+      const invite = store.invite(hashToken(key));
       if (invite === undefined) fail(res, 404, "invite_unknown");
       else if (invite.usedAt !== null) fail(res, 410, "invite_used");
       else if (invite.expiresAt <= new Date().toISOString()) fail(res, 410, "invite_expired");
@@ -179,7 +202,7 @@ export function authRoutes(store: Store, options: AuthOptions) {
         return true;
       }
       const body = await readJson(req);
-      const token = typeof body?.token === "string" ? body.token : "";
+      const token = typeof body?.token === "string" ? normaliseCode(body.token) : "";
       const nick = typeof body?.nick === "string" ? body.nick : "";
       if (token === "") {
         fail(res, 400, "bad_request");

@@ -161,7 +161,7 @@ test("joining creates a channel, and only its members see its messages", limits,
   send(a.c, { type: "join", channel: "#Futebol" }); // stored in lower case
   const joined = await until(a.c, ofType("joined"));
   assert.equal(joined.channel, "#futebol");
-  assert.deepEqual(joined.members, [{ nick: a.nick, status: "online", note: "" }]);
+  assert.deepEqual(joined.members, [{ nick: a.nick, status: "online", note: "", role: "member" }]);
 
   send(a.c, { type: "say", channel: "#futebol", text: "goal!" });
   await until(a.c, (m) => m.type === "message" && m.text === "goal!");
@@ -299,7 +299,7 @@ test("a status and its note reach everyone who shares a channel, and newcomers s
   assert.equal(mine.status, "busy");
   const c = await arrive();
   const entry = (c.joined.members as Msg[]).find((m) => m.nick === a.nick);
-  assert.deepEqual(entry, { nick: a.nick, status: "busy", note: "a fingir que trabalho" });
+  assert.deepEqual(entry, { nick: a.nick, status: "busy", note: "a fingir que trabalho", role: "member" });
   a.c.ws.close();
   b.c.ws.close();
   c.c.ws.close();

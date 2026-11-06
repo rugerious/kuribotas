@@ -16,6 +16,7 @@ export type Parsed =
   | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
   | { kind: "closeDm"; nick: string } // close a private chat tab
   | { kind: "notify"; on: boolean } // notifications on this device
+  | { kind: "logout" } // sign this device out (/xau)
   | { kind: "error"; text: string }
   | { kind: "nothing" };
 
@@ -48,6 +49,12 @@ const ALIASES: Record<string, string> = {
   "/maria": "/colher",
   "/spoon": "/colher",
   "/drums": "/batuque",
+  "/invitelink": "/convite",
+  "/device": "/aparelho",
+  "/devices": "/aparelhos",
+  "/logout": "/xau",
+  "/kick": "/expulsar",
+  "/remove": "/expulsar",
   "/notificacoes": "/notifications",
   "/notificações": "/notifications",
 };
@@ -146,6 +153,24 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       return EVERYONE.includes(firstWord.toLowerCase())
         ? send({ type: "nudge", channel, everyone: true, tornado: command === "/tornado" })
         : send({ type: "nudge", channel, nick: firstWord, tornado: command === "/tornado" });
+    case "/convite":
+      return send({ type: "make_invite" });
+    case "/aparelho":
+      return send({ type: "make_device_link" });
+    case "/aparelhos":
+      return send({ type: "devices" });
+    case "/xau": {
+      if (!firstWord) return { kind: "logout" };
+      const id = Number(firstWord.replace(/^\[|\]$/g, ""));
+      return Number.isInteger(id) && id > 0 ? send({ type: "forget_device", id }) : usage(w.examples.logout);
+    }
+    case "/op":
+    case "/deop":
+      return firstWord
+        ? send({ type: "role", nick: firstWord, role: command === "/op" ? "admin" : "member" })
+        : usage(command === "/op" ? w.examples.op : w.examples.deop);
+    case "/expulsar":
+      return firstWord ? send({ type: "remove", nick: firstWord }) : usage(w.examples.remove);
     case "/notifications": {
       const answer = firstWord.toLowerCase();
       if (YES.includes(answer)) return { kind: "notify", on: true };

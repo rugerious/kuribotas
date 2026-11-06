@@ -23,6 +23,7 @@ export type PushRow = {
   quiet: boolean;
   lang: "pt" | "en";
   at: string;
+  session: string; // the device's session hash: signing it out forgets its notifications too
 };
 
 // Someone with an account (phase 4): a nick that belongs to them, on as many devices as they like.
@@ -41,6 +42,8 @@ export type Invite = {
   expiresAt: string;
   usedAt: string | null;
 };
+
+export type SessionRow = { id: number; hash: string; device: string; createdAt: string; seenAt: string };
 
 export type RedeemResult =
   | { ok: true; person: Person }
@@ -67,7 +70,11 @@ export type Store = {
   // Uses the invite (once, ever) and opens a session, all or nothing. `nick` only for person invites.
   redeem: (tokenHash: string, nick: string, sessionHash: string, device: string, now: string) => RedeemResult;
   sessionPerson: (sessionHash: string, now: string) => Person | undefined; // also marks it as seen
-  deleteSession: (sessionHash: string) => void;
+  deleteSession: (sessionHash: string) => void; // and that device's notifications
+  sessionsOf: (personId: number) => SessionRow[];
+  deleteSessionById: (personId: number, id: number) => string | undefined; // the hash, if it was theirs
+  setRole: (personId: number, role: Role) => void;
+  deletePerson: (personId: number) => void; // with their sessions, invites and notifications
   close: () => void;
 };
 
@@ -150,6 +157,10 @@ export const MIGRATIONS: readonly string[] = [
     used_at    TEXT
   );
   `,
+  `
+  -- v5: which device (session) asked for notifications, so signing a lost phone out silences it too.
+  ALTER TABLE push_subscriptions ADD COLUMN session_hash TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
@@ -190,13 +201,13 @@ export function openStore(path: string): Store {
   `);
 
   const upsertPush = db.prepare(`
-    INSERT INTO push_subscriptions (endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at)
-    VALUES (:endpoint, :p256dh, :auth, :nick, :channels, :quiet, :lang, :at)
+    INSERT INTO push_subscriptions (endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at, session_hash)
+    VALUES (:endpoint, :p256dh, :auth, :nick, :channels, :quiet, :lang, :at, :session)
     ON CONFLICT (endpoint) DO UPDATE SET p256dh = :p256dh, auth = :auth, nick = :nick,
-      channels = :channels, quiet = :quiet, lang = :lang, updated_at = :at
+      channels = :channels, quiet = :quiet, lang = :lang, updated_at = :at, session_hash = :session
   `);
   const removePush = db.prepare("DELETE FROM push_subscriptions WHERE endpoint = :endpoint");
-  const pushColumns = "endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at AS at";
+  const pushColumns = "endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at AS at, session_hash AS session";
   const selectPushByNick = db.prepare(`SELECT ${pushColumns} FROM push_subscriptions WHERE lower(nick) = lower(:nick)`);
   const selectPushByChannel = db.prepare(`
     SELECT ${pushColumns} FROM push_subscriptions
@@ -230,6 +241,13 @@ export function openStore(path: string): Store {
   `);
   const touchSession = db.prepare("UPDATE sessions SET seen_at = :at WHERE token_hash = :sessionHash");
   const removeSession = db.prepare("DELETE FROM sessions WHERE token_hash = :sessionHash");
+  const removeSessionPush = db.prepare("DELETE FROM push_subscriptions WHERE session_hash = :sessionHash");
+  const removeNickPush = db.prepare("DELETE FROM push_subscriptions WHERE lower(nick) = lower(:nick)");
+  const selectSessions = db.prepare(
+    "SELECT rowid AS id, token_hash, device, created_at, seen_at FROM sessions WHERE person_id = :personId ORDER BY created_at",
+  );
+  const updateRole = db.prepare("UPDATE people SET role = :role WHERE id = :personId");
+  const removePerson = db.prepare("DELETE FROM people WHERE id = :personId");
   const selectPersonById = db.prepare("SELECT id, nick, role FROM people WHERE id = :id");
 
   const readInvite = (tokenHash: string): Invite | undefined => {
@@ -325,6 +343,32 @@ export function openStore(path: string): Store {
     },
     deleteSession: (sessionHash) => {
       removeSession.run({ sessionHash });
+      removeSessionPush.run({ sessionHash });
+    },
+    sessionsOf: (personId) =>
+      selectSessions.all({ personId }).map((row) => ({
+        id: Number(row.id),
+        hash: String(row.token_hash),
+        device: String(row.device),
+        createdAt: String(row.created_at),
+        seenAt: String(row.seen_at),
+      })),
+    deleteSessionById: (personId, id) => {
+      const row = selectSessions.all({ personId }).find((r) => Number(r.id) === id);
+      if (row === undefined) return undefined;
+      const sessionHash = String(row.token_hash);
+      removeSession.run({ sessionHash });
+      removeSessionPush.run({ sessionHash });
+      return sessionHash;
+    },
+    setRole: (personId, role) => {
+      updateRole.run({ personId, role });
+    },
+    deletePerson: (personId) => {
+      const row = selectPersonById.get({ id: personId });
+      if (row === undefined) return;
+      removeNickPush.run({ nick: String(row.nick) });
+      removePerson.run({ personId }); // sessions and invites go with them (foreign keys)
     },
     close: () => db.close(),
   };
@@ -398,5 +442,6 @@ function toPush(row: Record<string, unknown>): PushRow {
     quiet: Number(row.quiet) === 1,
     lang: row.lang === "en" ? "en" : "pt",
     at: String(row.at),
+    session: String(row.session),
   };
 }
