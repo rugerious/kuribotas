@@ -10,6 +10,8 @@ export type AppOptions = {
   webDir?: string;
   // Folder with the family's own sounds (nudge.mp3, tornado.mp3). Private: never in Git or the image.
   soundsDir?: string;
+  // How often to check that each connection is still alive (ms). Tests use a short one.
+  heartbeatMs?: number;
 };
 
 export type App = {
@@ -45,7 +47,7 @@ export function createApp(options: AppOptions): App {
     });
   });
 
-  const chat = attachChat(server, store);
+  const chat = attachChat(server, store, { heartbeatMs: options.heartbeatMs });
 
   return {
     server,

@@ -94,10 +94,16 @@ export function colourOf(state: State, channel: string): RoomColour {
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "connection": {
+      // Said once when the line drops (not on every retry), and once when it comes back.
+      const w = words(state.lang);
       const next = { ...state, connection: action.status };
-      return action.status === "closed"
-        ? addEvent(next, next.active, words(state.lang).events.disconnected, action.at, "error")
-        : next;
+      if (action.status === "closed" && state.connection === "open") {
+        return addEvent(next, next.active, w.events.disconnected, action.at, "error");
+      }
+      if (action.status === "open" && state.connection === "closed") {
+        return addEvent(next, next.active, w.events.reconnected, action.at, "info");
+      }
+      return next;
     }
     case "local":
       return addEvent(state, state.active, action.text, action.at, action.tone);
@@ -152,10 +158,34 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     members: r.members.filter((m) => m.nick !== nick),
   });
   switch (msg.type) {
-    case "welcome":
-      return { ...state, nick: msg.nick, known: msg.channels };
+    case "welcome": {
+      const next: State = { ...state, nick: msg.nick, known: msg.channels };
+      if (state.rooms.length === 0) return next;
+      // Back after a dropped connection: the app joins its channels again. Private channels can't be
+      // rejoined (the invite belonged to the old connection), so their tabs close with a note.
+      const lost = state.rooms.filter((r) => r.private && !isDm(r.name));
+      const rooms = state.rooms.filter((r) => !lost.includes(r)).map((r) => ({ ...r, typing: [] }));
+      const active = rooms.some((r) => r.name === state.active) ? state.active : (rooms[0]?.name ?? HOME_CHANNEL);
+      const back: State = { ...next, rooms, active };
+      return lost.length === 0 ? back : addEvent(back, active, w.events.lostPrivate(lost.map((r) => r.name).join(" ")), at, "info");
+    }
 
     case "joined": {
+      const existing = state.rooms.find((r) => r.name === msg.channel);
+      if (existing !== undefined) {
+        // Rejoined after a reconnection: keep what is on screen, add only the messages missed meanwhile.
+        const seen = Math.max(0, ...existing.lines.map((l) => (l.kind === "message" ? l.msg.id : 0)));
+        let seq = state.seq;
+        const missed: Line[] = msg.history.filter((m) => m.id > seen).map((m) => ({ kind: "message", key: ++seq, msg: m }));
+        const next = updateRoom({ ...state, seq }, msg.channel, (r) => ({
+          ...r,
+          topic: msg.topic,
+          members: msg.members,
+          lines: trim([...r.lines, ...missed]),
+          unread: r.name === state.active ? r.unread : r.unread + missed.length,
+        }));
+        return msg.topic !== existing.topic && msg.topic ? addEvent(next, msg.channel, w.events.topicIs(msg.topic), at, "info") : next;
+      }
       const first = state.rooms.length === 0;
       let seq = state.seq;
       const lines: Line[] = msg.history.map((m) => ({ kind: "message", key: ++seq, msg: m }));

@@ -61,6 +61,8 @@ export type Words = {
     youInvited: (to: string, channel: string) => string;
     sounds: (current: string, options: readonly string[], tornado: boolean) => string;
     disconnected: string;
+    reconnected: string;
+    lostPrivate: (channels: string) => string;
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
@@ -122,7 +124,7 @@ const pt: Words = {
           : n.length === 2
             ? `${n[0]} e ${n[1]} estão a escrever…`
             : `${n[0]}, ${n[1]} e mais ${n.length - 2} estão a escrever…`,
-    connection: { connecting: "a ligar…", open: "ligado", closed: "desligado" },
+    connection: { connecting: "a ligar…", open: "ligado", closed: "sem ligação · a voltar…" },
   },
   events: {
     welcome: (nick, chs) => `Bem-vindo, ${nick}! Canais: ${chs}. Escreve /ajuda para veres os comandos.`,
@@ -158,7 +160,9 @@ const pt: Words = {
       t
         ? `Sons do tornado: ${options.join(" · ")} (agora: ${current}). Escolhe com /som tornado <nome>`
         : `Sons do abanão: ${options.join(" · ")} (agora: ${current}). Escolhe com /som <nome> · tornados: /som tornado`,
-    disconnected: "Ligação perdida. Recarrega a página para voltares.",
+    disconnected: "Ligação perdida. A voltar a ligar…",
+    reconnected: "De volta! 🔌",
+    lostPrivate: (chs) => `Ao perderes a ligação saíste de ${chs} 🔒 Pede um novo convite para voltar`,
   },
   errors: {
     invalid_nick: () => "Nick inválido: 1 a 24 letras, números ou _-~*^.|[]{} (sem espaços)",
@@ -249,7 +253,7 @@ const en: Words = {
           : n.length === 2
             ? `${n[0]} and ${n[1]} are typing…`
             : `${n[0]}, ${n[1]} and ${n.length - 2} more are typing…`,
-    connection: { connecting: "connecting…", open: "online", closed: "offline" },
+    connection: { connecting: "connecting…", open: "online", closed: "offline · reconnecting…" },
   },
   events: {
     welcome: (nick, chs) => `Welcome, ${nick}! Channels: ${chs}. Type /help for commands.`,
@@ -284,7 +288,9 @@ const en: Words = {
       t
         ? `Tornado sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound tornado <name>`
         : `Nudge sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound <name> · tornadoes: /sound tornado`,
-    disconnected: "Disconnected. Reload the page to reconnect.",
+    disconnected: "Connection lost. Reconnecting…",
+    reconnected: "Back online! 🔌",
+    lostPrivate: (chs) => `You left ${chs} when the connection dropped 🔒 ask for a new invite`,
   },
   errors: {
     invalid_nick: () => "invalid nick: use 1-24 letters, digits or _-~*^.|[]{} (no spaces)",

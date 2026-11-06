@@ -116,14 +116,15 @@ test("a topic change is shown and remembered", () => {
 });
 
 test("errors and a lost connection appear in the open tab, marked as errors", () => {
-  let s = apply(arrived(), { type: "error", code: "nick_taken", detail: "Pai", reason: "nick already in use: Pai" });
+  let s = reduce(arrived(), { type: "connection", status: "open", at });
+  s = apply(s, { type: "error", code: "nick_taken", detail: "Pai", reason: "nick already in use: Pai" });
   s = reduce(s, { type: "connection", status: "closed", at });
   const last = s.rooms[0]?.lines.slice(-2) ?? [];
   assert.deepEqual(
     last.map((l) => (l.kind === "event" ? [l.tone, l.text] : [])),
     [
       ["error", "nick already in use: Pai"],
-      ["error", "Disconnected. Reload the page to reconnect."],
+      ["error", "Connection lost. Reconnecting…"],
     ],
   );
   assert.equal(s.connection, "closed");
@@ -351,4 +352,42 @@ test("in a private chat, the message clears the typing line, like in a channel",
   assert.deepEqual(typingIn(s.rooms.find((r) => r.name === "Pai")), ["Pai"]);
   s = apply(s, dm("Pai", "Guest-1", "estás em casa?"));
   assert.deepEqual(typingIn(s.rooms.find((r) => r.name === "Pai")), []);
+});
+
+test("a dropped connection is said once; coming back is said once", () => {
+  let s = reduce(arrived(), { type: "connection", status: "open", at });
+  s = reduce(s, { type: "connection", status: "closed", at });
+  s = reduce(s, { type: "connection", status: "connecting", at });
+  s = reduce(s, { type: "connection", status: "closed", at }); // a failed retry: no new line
+  s = reduce(s, { type: "connection", status: "open", at });
+  assert.deepEqual(texts(s.rooms[0]?.lines ?? []).slice(-2), ["*** Connection lost. Reconnecting…", "*** Back online! 🔌"]);
+});
+
+test("rejoining keeps the screen and adds only the messages missed meanwhile", () => {
+  const before = arrived(); // has message id 1 from Pai
+  const back = apply(before, { type: "welcome", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] }, {
+    type: "joined",
+    private: false,
+    channel: "#mujimbo",
+    topic: "dinner",
+    members: [online("Pai"), online("Guest-1"), online("Mãe")],
+    history: [
+      { id: 1, channel: "#mujimbo", nick: "Pai", kind: "say", text: "olá", at },
+      { id: 2, channel: "#mujimbo", nick: "Mãe", kind: "say", text: "cheguei", at },
+    ],
+  });
+  assert.deepEqual(texts(back.rooms[0]?.lines ?? []), [...texts(before.rooms[0]?.lines ?? []), "<Mãe> cheguei"]);
+  assert.deepEqual(nicks(back), ["Pai", "Guest-1", "Mãe"]);
+  assert.equal(back.rooms.length, 1);
+});
+
+test("after a reconnection, private channel tabs close with a note; private chats stay", () => {
+  let s = apply(arrived(), { type: "joined", private: true, channel: "#primos", topic: "", members: [online("Guest-1")], history: [] });
+  s = reduce(s, { type: "openDm", nick: "Pai" });
+  s = apply(s, { type: "welcome", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] });
+  assert.deepEqual(
+    s.rooms.map((r) => r.name),
+    ["#mujimbo", "Pai"],
+  );
+  assert.equal(texts(s.rooms.find((r) => r.name === s.active)?.lines ?? []).at(-1), "*** You left #primos when the connection dropped 🔒 ask for a new invite");
 });

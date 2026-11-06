@@ -164,6 +164,8 @@ export function App() {
   const [editingNote, setEditingNote] = useState(false);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
   const askedForNick = useRef(false);
+  const stateRef = useRef(state); // the latest state, for the socket's event handlers
+  stateRef.current = state;
   const autoNick = useRef<{ nick: string; tries: number } | null>(null); // the saved nick we're asking for
   const socket = useRef<WebSocket | null>(null);
   const w = words(state.lang);
@@ -172,38 +174,87 @@ export function App() {
     document.documentElement.lang = state.lang === "pt" ? "pt" : "en";
   }, [state.lang]);
 
-  // One WebSocket for the life of the page. Automatic reconnection comes in phase 3.
+  // One WebSocket at a time, reconnected for as long as the page is open: after 1 s, 2, 4, 8… up to 30 s,
+  // and straight away when the phone gets its network back or the app comes back to the screen.
+  // It asks for this device's nick as it connects, so the others see "Estraga_Lar chegou".
   useEffect(() => {
-    const scheme = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${scheme}://${location.host}/ws`);
-    socket.current = ws;
-    ws.addEventListener("open", () => dispatch({ type: "connection", status: "open", at: now() }));
-    ws.addEventListener("close", () => dispatch({ type: "connection", status: "closed", at: now() }));
-    ws.addEventListener("message", (e) => {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(String(e.data)) as ServerMessage;
-      } catch {
-        return;
-      }
-      const pending = autoNick.current;
-      if (pending !== null) {
-        if (msg.type === "nick" && msg.nick === pending.nick) autoNick.current = null;
-        const ours = msg.type === "error" && msg.code === "nick_taken" && msg.detail.toLowerCase() === pending.nick.toLowerCase();
-        if (ours && pending.tries <= NICK_RETRIES) {
-          const retry = pending.tries * 1000;
-          pending.tries += 1;
-          setTimeout(() => {
-            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "nick", nick: pending.nick }));
-          }, retry);
-          return; // not an error yet: probably our own old page, still leaving
-        }
-        if (ours) autoNick.current = null; // really taken by someone else: say so (below)
-      }
-      dispatch({ type: "server", msg, at: now() });
-    });
-    return () => ws.close();
+    let closedByUs = false;
+    let attempt = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    const connect = (): void => {
+      clearTimeout(retry);
+      const current = socket.current;
+      if (current !== null && current.readyState <= WebSocket.OPEN) return; // connecting or open already
+      const scheme = location.protocol === "https:" ? "wss" : "ws";
+      const saved = loadNick();
+      const ws = new WebSocket(`${scheme}://${location.host}/ws${saved ? `?nick=${encodeURIComponent(saved)}` : ""}`);
+      socket.current = ws;
+      ws.addEventListener("open", () => {
+        attempt = 0;
+        askedForNick.current = false; // if the nick was still held by our ghost, ask again quietly
+        dispatch({ type: "connection", status: "open", at: now() });
+      });
+      ws.addEventListener("close", () => {
+        if (socket.current !== ws) return;
+        dispatch({ type: "connection", status: "closed", at: now() });
+        if (closedByUs) return;
+        const delay = Math.min(30, 2 ** attempt) * 1000;
+        attempt += 1;
+        retry = setTimeout(connect, delay);
+      });
+      ws.addEventListener("message", (e) => onMessage(ws, e));
+    };
+
+    const now_ = (): void => {
+      if (document.visibilityState === "visible") connect();
+    };
+    addEventListener("online", connect);
+    document.addEventListener("visibilitychange", now_);
+    connect();
+    return () => {
+      closedByUs = true;
+      clearTimeout(retry);
+      removeEventListener("online", connect);
+      document.removeEventListener("visibilitychange", now_);
+      socket.current?.close();
+    };
   }, []);
+
+  // Back after a reconnection: join the channels again and put the status back as it was.
+  const rejoin = (ws: WebSocket): void => {
+    const s = stateRef.current;
+    const say = (msg: ClientMessage): void => ws.send(JSON.stringify(msg));
+    for (const r of s.rooms) if (!isDm(r.name) && !r.private) say({ type: "join", channel: r.name });
+    if (s.status !== "online" || s.note !== "") say({ type: "status", status: s.status, note: s.note });
+  };
+
+  const onMessage = (ws: WebSocket, e: MessageEvent): void => {
+    // Messages from the server; the socket's handlers only see refs, so this never reads stale state.
+    let msg: ServerMessage;
+    try {
+      msg = JSON.parse(String(e.data)) as ServerMessage;
+    } catch {
+      return;
+    }
+    const pending = autoNick.current;
+    if (pending !== null) {
+      if (msg.type === "nick" && msg.nick === pending.nick) autoNick.current = null;
+      const ours = msg.type === "error" && msg.code === "nick_taken" && msg.detail.toLowerCase() === pending.nick.toLowerCase();
+      if (ours && pending.tries <= NICK_RETRIES) {
+        const retry = pending.tries * 1000;
+        pending.tries += 1;
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "nick", nick: pending.nick }));
+        }, retry);
+        return; // not an error yet: probably our own old page, still leaving
+      }
+      if (ours) autoNick.current = null; // really taken by someone else: say so (below)
+    }
+    const reconnecting = msg.type === "welcome" && stateRef.current.rooms.length > 0;
+    dispatch({ type: "server", msg, at: now() });
+    if (reconnecting) rejoin(ws);
+  };
 
   useEffect(() => saveColours(state.colours), [state.colours]);
 
