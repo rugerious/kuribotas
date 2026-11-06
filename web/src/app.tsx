@@ -7,6 +7,7 @@ import {
   isDm,
   isGuestNick,
   reduce,
+  totalUnread,
   ROOM_COLOURS,
   typingIn,
   type Line,
@@ -25,6 +26,7 @@ import {
   vibrate,
 } from "./sound.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
+import { Peeker } from "./peeker.tsx";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
@@ -323,6 +325,21 @@ export function App() {
     };
   }, [state.thrown?.key]);
 
+  // Unread messages in the window title, "(3) Kuribotas", and on the app's icon when it's installed
+  // (Android, desktop and iPhone 16.4+; elsewhere the badge call simply doesn't exist).
+  const unread = totalUnread(state);
+  useEffect(() => {
+    document.title = unread > 0 ? `(${unread}) Kuribotas` : "Kuribotas";
+    if (unread > 0) navigator.setAppBadge?.(unread).catch(() => {});
+    else navigator.clearAppBadge?.().catch(() => {});
+  }, [unread]);
+
+  useEffect(() => {
+    const changed = (): void => dispatch({ type: "visibility", visible: document.visibilityState === "visible" });
+    document.addEventListener("visibilitychange", changed);
+    return () => document.removeEventListener("visibilitychange", changed);
+  }, []);
+
   // "is typing" runs out on its own; the reducer returns the same state when nothing changed.
   useEffect(() => {
     const timer = setInterval(() => dispatch({ type: "tick", at: now() }), 1000);
@@ -406,14 +423,19 @@ export function App() {
         <h1 class="brand">
           KURI<span>BOTAS</span>
         </h1>
-        {!online && <span class={`conn conn-${state.connection}`}>{w.ui.connection[state.connection]}</span>}
+        {!online && (
+          <span class={`conn conn-${state.connection}`}>
+            <Peeker />
+            <span class="conn-text">{w.ui.connection[state.connection]}</span>
+          </span>
+        )}
         {state.nick && (
           <div class="me">
             <span class="me-nick">{state.nick}</span>
             <label class="visually-hidden" for="status">
               {w.ui.yourStatus}
             </label>
-            <span class={`dot st-${state.status}`} aria-hidden="true" />
+            {state.status === "invisible" ? <Peeker /> : <span class={`dot st-${state.status}`} aria-hidden="true" />}
             <button
               type="button"
               class="note-edit-toggle"
@@ -615,7 +637,7 @@ function PersonRow({
   return (
     <li class="person">
       <span class="person-line">
-        <span class={`dot st-${member.status}`} aria-hidden="true" />
+        {member.status === "invisible" ? <Peeker /> : <span class={`dot st-${member.status}`} aria-hidden="true" />}
         <span class={`person-nick ${nickClass(member.nick)}`} title={member.nick}>
           {member.nick}
         </span>

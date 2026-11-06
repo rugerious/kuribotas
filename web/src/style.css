@@ -88,6 +88,9 @@ body::after {
 }
 /* Connection: only shown while connecting or offline */
 .conn {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -164,6 +167,47 @@ body::after {
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
+}
+
+/* The peeker: the icon's little one, small, with eyes that look around */
+.peeker {
+  flex: none;
+  width: 30px;
+  height: 17px;
+}
+.conn .peeker {
+  width: 36px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.peeker .pupil {
+  animation: 6s ease-in-out infinite;
+}
+.peeker .pupil-l {
+  animation-name: peek-l;
+}
+.peeker .pupil-r {
+  animation-name: peek-r;
+}
+/* right (where it starts) → at you → left → at you → down → each eye its own way → right */
+@keyframes peek-l {
+  0%, 14% { transform: translate(0, 0); }
+  20%, 30% { transform: translate(-26px, 6px); }
+  36%, 48% { transform: translate(-52px, 0); }
+  54%, 60% { transform: translate(-26px, 6px); }
+  66%, 76% { transform: translate(-18px, 26px); }
+  82%, 94% { transform: translate(-52px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes peek-r {
+  0%, 14% { transform: translate(0, 0); }
+  20%, 30% { transform: translate(-26px, 6px); }
+  36%, 48% { transform: translate(-52px, 0); }
+  54%, 60% { transform: translate(-26px, 6px); }
+  66%, 76% { transform: translate(-18px, 26px); }
+  82%, 94% { transform: translate(0, -2px); }
+  100% { transform: translate(0, 0); }
 }
 
 /* Status dots: colour AND shape differ, so they can be told apart without colour */
@@ -540,6 +584,28 @@ input:focus-visible {
   .me > .dot {
     display: none;
   }
+  .me > .peeker {
+    width: 22px;
+    height: 13px;
+  }
+  /* No room for the words on a phone: the peeker says it (the chat says "Ligação perdida…"). */
+  .conn {
+    padding: 4px 6px;
+  }
+  .conn .peeker {
+    margin-right: 0;
+  }
+  .note-edit-toggle:disabled {
+    display: none; /* offline: it can't be used anyway, and the nick needs the room */
+  }
+  .conn-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .note-edit-toggle {
     min-width: 32px;
   }
@@ -693,6 +759,9 @@ input:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
+  }
+  .peeker .pupil {
+    animation: none; /* it keeps its side-eye, just still */
   }
   /* Less motion asked for: the line in the chat is enough. */
   .throw,
