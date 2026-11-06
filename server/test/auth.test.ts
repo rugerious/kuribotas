@@ -2,6 +2,9 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { WebSocket } from "ws";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createApp } from "../src/app.ts";
 import { deviceName, inviteLink, makeInvite } from "../src/auth.ts";
 import { signIn } from "./people.ts";
@@ -266,4 +269,31 @@ test("an @ gives @ (shown in the people list), can't drop their own, and removes
   const roles = Object.fromEntries((joined.members as { nick: string; role: string }[]).map((m) => [m.nick, m.role]));
   assert.equal(roles.Kota_2, "admin");
   for (const c of [op, kota, late]) c.ws.close();
+});
+
+test("more than 20 messages in 10 s is a flood: refused, and the sender is told how long to wait", limits, async () => {
+  const c = await as(signIn(app.store, "Teclado_Preso"));
+  await c.next((m) => m.type === "joined");
+  for (let i = 0; i < 21; i++) c.send({ type: "say", channel: "#mujimbo", text: `spam ${i}` });
+  const err = await c.next((m) => m.type === "error");
+  assert.equal(err.code, "too_fast");
+  assert.ok(Number(err.detail) >= 1 && Number(err.detail) <= 10);
+  c.ws.close();
+});
+
+test("on start, channel messages older than 90 days are deleted", limits, async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kuribotas-history-"));
+  try {
+    const dbPath = join(dir, "kuribotas.db");
+    const first = createApp({ dbPath });
+    const daysAgo = (n: number): string => new Date(Date.now() - n * 24 * 3600 * 1000).toISOString();
+    first.store.addMessage({ channel: "#mujimbo", nick: "Kota", kind: "say", text: "from last summer", at: daysAgo(91) });
+    first.store.addMessage({ channel: "#mujimbo", nick: "Kota", kind: "say", text: "from last month", at: daysAgo(30) });
+    await first.close();
+    const again = createApp({ dbPath });
+    assert.deepEqual(again.store.recentMessages("#mujimbo", 10).map((m) => m.text), ["from last month"]);
+    await again.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

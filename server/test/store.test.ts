@@ -236,3 +236,13 @@ test("an @ can be made, and removing a person takes their sessions, invites and 
   assert.deepEqual(store.pushFor("Primo"), []);
   store.close();
 });
+
+test("messages older than a date can be deleted; newer ones stay", () => {
+  const store = openStore(":memory:");
+  store.addMessage(say("#mujimbo", "old gossip", 1));
+  store.addMessage(say("#mujimbo", "fresh gossip", 30));
+  assert.equal(store.deleteMessagesBefore(at(10)), 1);
+  assert.deepEqual(store.recentMessages("#mujimbo", 10).map((m) => m.text), ["fresh gossip"]);
+  assert.equal(store.deleteMessagesBefore(at(10)), 0);
+  store.close();
+});

@@ -20,7 +20,12 @@ export type AppOptions = {
   pushSend?: PushSend;
   // Session cookies get the Secure flag (https only). Off for http://localhost while developing.
   secureCookies?: boolean;
+  // Channel messages older than this are deleted (on start, then once a day). 0 = keep everything.
+  historyDays?: number;
 };
+
+const HISTORY_DAYS = 90; // the family's choice: the gossip doesn't stay around for long
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type App = {
   server: Server;
@@ -74,10 +79,26 @@ export function createApp(options: AppOptions): App {
   });
   signOut = chat.signOut;
 
+  // Old gossip goes: once now (a server that was off for a while catches up), then every day.
+  const historyDays = options.historyDays ?? HISTORY_DAYS;
+  const forgetOld = (): void => {
+    if (historyDays <= 0) return;
+    try {
+      const gone = store.deleteMessagesBefore(new Date(Date.now() - historyDays * DAY_MS).toISOString());
+      if (gone > 0) console.log(`history: deleted ${gone} messages older than ${historyDays} days`);
+    } catch (err) {
+      console.error(`history: could not delete old messages: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  forgetOld();
+  const daily = setInterval(forgetOld, DAY_MS);
+  daily.unref();
+
   return {
     server,
     store,
     close: async () => {
+      clearInterval(daily);
       await chat.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       store.close();
