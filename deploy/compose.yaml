@@ -1,0 +1,40 @@
+# Kuribotas on the server: the app and the Cloudflare Tunnel, side by side. No port is published.
+# The tunnel connects out to Cloudflare, and Cloudflare sends the family's https traffic back through it,
+# so the machine needs no inbound rule at all. Run from this folder: docker compose up -d
+# Settings come from .env next to this file (mode 0600, never in Git): see .env.example.
+name: kuribotas
+
+services:
+  app:
+    # Pinned to one build of main (sha-<commit>), so a deploy is a deliberate change of this one value.
+    image: ghcr.io/rugerious/kuribotas/server:${KURIBOTAS_TAG:?set KURIBOTAS_TAG in .env}
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env} # invite links point here; https = Secure cookies
+    volumes:
+      # The database, vapid.json and the family's sounds. Owned by uid 1000 (the image's "node" user).
+      - ./data:/data
+    read_only: true # only /data is writable
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 300m
+    networks: [inside]
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.1
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env} # from the Cloudflare dashboard; a secret
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 100m
+    depends_on:
+      app:
+        condition: service_healthy # the image's HEALTHCHECK on /healthz
+    networks: [inside]
+
+networks:
+  inside: {}

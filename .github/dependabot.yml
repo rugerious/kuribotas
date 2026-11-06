@@ -21,3 +21,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # The tunnel's image in deploy/compose.yaml.
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly
