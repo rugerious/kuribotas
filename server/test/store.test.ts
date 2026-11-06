@@ -154,3 +154,51 @@ test("devices asking for notifications are kept by endpoint, found by nick (any 
   assert.deepEqual(store.pushInChannel("#mujimbo"), []);
   store.close();
 });
+
+const later = "2026-12-31T00:00:00.000Z";
+
+test("an invite brings in one person, once, with the nick they pick", () => {
+  const store = openStore(":memory:");
+  assert.equal(store.countPeople(), 0);
+  store.createInvite("hash-1", { kind: "person", personId: null, role: "admin", createdBy: null, expiresAt: later }, at(0));
+  assert.deepEqual(store.redeem("hash-1", "bad nick", "s-0", "", at(1)), { ok: false, error: "invalid_nick" });
+  const first = store.redeem("hash-1", " Mais_Velho ", "s-1", "Android · Chrome", at(1));
+  assert.deepEqual(first, { ok: true, person: { id: 1, nick: "Mais_Velho", role: "admin" } });
+  assert.deepEqual(store.redeem("hash-1", "Kota", "s-2", "", at(2)), { ok: false, error: "invite_used" });
+  assert.deepEqual(store.sessionPerson("s-1", at(3)), { id: 1, nick: "Mais_Velho", role: "admin" });
+  assert.equal(store.sessionPerson("s-2", at(3)), undefined);
+  assert.equal(store.redeem("nope", "Kota", "s-3", "", at(2)).ok, false);
+  store.close();
+});
+
+test("nicks belong to one person (any case); a failed redeem leaves the invite unused", () => {
+  const store = openStore(":memory:");
+  const invite = (hash: string, expiresAt = later) =>
+    store.createInvite(hash, { kind: "person", personId: null, role: "member", createdBy: null, expiresAt }, at(0));
+  invite("a");
+  invite("b");
+  invite("old", at(5));
+  assert.equal(store.redeem("a", "Kota", "s-a", "", at(1)).ok, true);
+  assert.deepEqual(store.redeem("b", "KOTA", "s-b", "", at(1)), { ok: false, error: "nick_taken" });
+  assert.equal(store.invite("b")?.usedAt, null); // still usable with another nick
+  assert.equal(store.redeem("b", "Kamba", "s-b", "", at(2)).ok, true);
+  assert.deepEqual(store.redeem("old", "Primo", "s-c", "", at(6)), { ok: false, error: "invite_expired" });
+  assert.equal(store.personByNick("kota")?.nick, "Kota");
+  assert.equal(store.renamePerson(1, "kamba"), false); // someone else's, in another case
+  assert.equal(store.renamePerson(1, "KOTA"), true); // your own nick in another case is fine
+  assert.equal(store.personByNick("kota")?.nick, "KOTA");
+  store.close();
+});
+
+test("a device link adds a session to someone who is already in; a session can be removed", () => {
+  const store = openStore(":memory:");
+  store.createInvite("p", { kind: "person", personId: null, role: "member", createdBy: null, expiresAt: later }, at(0));
+  store.redeem("p", "Estraga_Lar", "phone", "", at(1));
+  store.createInvite("d", { kind: "device", personId: 1, role: "member", createdBy: 1, expiresAt: later }, at(2));
+  assert.deepEqual(store.redeem("d", "ignored", "laptop", "", at(3)), { ok: true, person: { id: 1, nick: "Estraga_Lar", role: "member" } });
+  assert.equal(store.countPeople(), 1);
+  store.deleteSession("phone");
+  assert.equal(store.sessionPerson("phone", at(4)), undefined);
+  assert.equal(store.sessionPerson("laptop", at(4))?.nick, "Estraga_Lar");
+  store.close();
+});

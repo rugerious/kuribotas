@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { WebSocket } from "ws";
 import { createApp } from "../src/app.ts";
 import type { PushSubscription } from "../src/push.ts";
+import { signIn } from "./people.ts";
 
 // Notifications are recorded here instead of going to Google or Apple. `status` is what the fake
 // push service answers (410 = the device is gone).
@@ -30,7 +31,7 @@ type Client = { ws: WebSocket; next: (match: (m: Msg) => boolean) => Promise<Msg
 
 function connect(nick: string): Promise<Client> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://${base}/ws?nick=${encodeURIComponent(nick)}`);
+    const ws = new WebSocket(`ws://${base}/ws`, { headers: { cookie: signIn(app.store, nick), origin: `http://${base}` } });
     const seen: Msg[] = [];
     const waiting: { match: (m: Msg) => boolean; done: (m: Msg) => void }[] = [];
     ws.on("message", (data) => {

@@ -70,9 +70,31 @@ export type ClientMessage =
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
   | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" };
 
+// Accounts (phase 4): "admin" is the family's @, who can invite new people.
+export type Role = "admin" | "member";
+
+// The small HTTP API around the chat. GET /api/me: who this device is signed in as.
+export type Me = { nick: string; role: Role };
+// GET /api/invite/<token>: what an invite link is for (a new person, or another device of `nick`).
+export type InviteInfo = { kind: "person" } | { kind: "device"; nick: string };
+// Any /api error. POST /api/redeem {token, nick} uses an invite; POST /api/logout signs this device out.
+export type ApiError = {
+  error:
+    | "no_session"
+    | "invite_unknown"
+    | "invite_used"
+    | "invite_expired"
+    | "invalid_nick"
+    | "nick_taken"
+    | "too_many_tries"
+    | "bad_request"
+    | "forbidden"
+    | "not_found";
+};
+
 // What the server sends.
 export type ServerMessage =
-  | { type: "welcome"; nick: string; channels: Channel[] }
+  | { type: "welcome"; nick: string; role: Role; channels: Channel[] }
   | { type: "joined"; channel: string; topic: string; members: Member[]; history: ChatMessage[]; private: boolean }
   | { type: "join"; channel: string; nick: string } // arrives as online with no note; a presence may follow
   | { type: "part"; channel: string; nick: string }
@@ -85,8 +107,8 @@ export type ServerMessage =
   | { type: "nudge"; channel: string; from: string; to: string | null; tornado: boolean } // only `to` shakes; null = everyone but `from`
   | { type: "nudge"; dm: true; from: string; to: string; tornado: boolean } // in a private chat, to both sides
   | ({ type: "message" } & ChatMessage) // in a private channel: not saved, id 0
-  // Until accounts (phase 4) anyone can take a free nick, so nothing private is saved: DMs and
-  // private channels live in memory only, and reach only people online right now.
+  // Nothing private is saved yet (phase 4b turns it on): DMs and private channels live in memory
+  // only, and reach only people online right now.
   | { type: "dm"; from: string; to: string; kind: MessageKind; text: string; at: string } // to both sides
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
