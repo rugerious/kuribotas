@@ -22,7 +22,7 @@ services:
     networks: [inside]
 
   tunnel:
-    image: cloudflare/cloudflared:2026.10.1
+    image: cloudflare/cloudflared:2026.10.7
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env} # from the Cloudflare dashboard; a secret
