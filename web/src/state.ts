@@ -43,6 +43,7 @@ export type Connection = "connecting" | "open" | "closed";
 export type State = {
   lang: Lang; // which words.ts language the screen speaks
   connection: Connection;
+  visible: boolean; // the app is on screen (a hidden app counts new messages even in the open tab)
   nick: string;
   status: Status; // mine
   note: string; // mine
@@ -64,11 +65,13 @@ export type Action =
   | { type: "closeDm"; nick: string } // close a private chat tab (it isn't saved anywhere)
   | { type: "colour"; channel: string; colour?: RoomColour; at: string } // no colour = the next one
   | { type: "lang"; lang: Lang; at: string }
-  | { type: "tick"; at: string }; // every second: "is typing" runs out
+  | { type: "tick"; at: string } // every second: "is typing" runs out
+  | { type: "visibility"; visible: boolean }; // the app went to the background, or came back
 
 export const initialState: State = {
   lang: "pt",
   connection: "connecting",
+  visible: true,
   nick: "",
   status: "online",
   note: "",
@@ -136,12 +139,21 @@ export function reduce(state: State, action: Action): State {
       const switched = { ...state, lang: action.lang };
       return addEvent(switched, switched.active, words(action.lang).events.lang, action.at, "info");
     }
+    case "visibility": {
+      const next = { ...state, visible: action.visible };
+      return action.visible ? reduce(next, { type: "focus", channel: state.active }) : next;
+    }
     case "tick": {
       const now = Date.parse(action.at);
       if (!state.rooms.some((r) => r.typing.some((t) => t.until <= now))) return state; // same state: no re-render
       return { ...state, rooms: state.rooms.map((r) => ({ ...r, typing: r.typing.filter((t) => t.until > now) })) };
     }
   }
+}
+
+// Everything unread, for the window title and the app icon's badge.
+export function totalUnread(state: State): number {
+  return state.rooms.reduce((sum, r) => sum + r.unread, 0);
 }
 
 // Who is typing in a room, for the line above the input.
@@ -279,7 +291,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         ...updateRoom(state, chat.channel, (r) => ({
           ...notTyping(r, chat.nick), // the message they were typing has arrived
           lines: trim([...r.lines, { kind: "message", key: seq, msg: chat }]),
-          unread: r.name === state.active ? r.unread : r.unread + 1,
+          unread: r.name === state.active && state.visible ? r.unread : r.unread + 1,
         })),
         seq,
       };
@@ -296,7 +308,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
           ...r,
           typing: r.typing.filter((x) => x.nick !== msg.from), // the message they were typing has arrived
           lines: trim([...r.lines, { kind: "message", key: seq, msg: chat }]),
-          unread: r.name === state.active || msg.from === state.nick ? r.unread : r.unread + 1,
+          unread: (r.name === state.active && state.visible) || msg.from === state.nick ? r.unread : r.unread + 1,
         })),
         seq,
       };
@@ -318,7 +330,8 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         }));
       }
       if (msg.nick !== state.nick) return next;
-      // Me: remember it and say it once, in the open tab.
+      // Me: remember it and say it once, in the open tab (not again when a reconnection puts it back).
+      if (msg.status === state.status && msg.note === state.note) return next;
       next = { ...next, status: msg.status, note: msg.note };
       return addEvent(next, next.active, w.events.nowStatus(w.status[msg.status], msg.note), at, "info");
     }

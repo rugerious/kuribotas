@@ -6,6 +6,7 @@ import {
   initialState,
   isDm,
   isGuestNick,
+  totalUnread,
   reduce,
   ROOM_COLOURS,
   TYPING_SHOWN_MS,
@@ -390,4 +391,19 @@ test("after a reconnection, private channel tabs close with a note; private chat
     ["#mujimbo", "Pai"],
   );
   assert.equal(texts(s.rooms.find((r) => r.name === s.active)?.lines ?? []).at(-1), "*** You left #primos when the connection dropped 🔒 ask for a new invite");
+});
+
+test("while the app is in the background, messages in the open tab count as unread too", () => {
+  let s = reduce(arrived(), { type: "visibility", visible: false });
+  s = apply(s, msg("#mujimbo", "Pai", "jantar!", 2), dm("Mãe", "Guest-1", "onde estás?"));
+  assert.equal(totalUnread(s), 2);
+  s = reduce(s, { type: "visibility", visible: true }); // back: the open tab is read, the DM still waits
+  assert.equal(totalUnread(s), 1);
+});
+
+test("my status is said once: the same status coming back (a reconnection) adds no line", () => {
+  const busy: ServerMessage = { type: "presence", nick: "Guest-1", status: "busy", note: "a bumbar" };
+  const once = apply(arrived(), busy);
+  const twice = apply(once, busy);
+  assert.equal(twice.rooms[0]?.lines.length, once.rooms[0]?.lines.length);
 });

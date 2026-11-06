@@ -13,6 +13,8 @@ const webDir = join(root, "dist");
 mkdirSync(webDir);
 writeFileSync(join(webDir, "index.html"), "<!doctype html><title>kuribotas test page</title>");
 writeFileSync(join(webDir, "main.js"), "console.log('hi');");
+writeFileSync(join(webDir, "manifest.webmanifest"), "{}");
+writeFileSync(join(webDir, "sw.js"), "// worker");
 writeFileSync(join(root, "secret.txt"), "family secrets");
 
 const app = createApp({ dbPath: ":memory:", webDir });
@@ -88,4 +90,12 @@ test("/healthz still answers when files are served", async () => {
   const res = await raw("/healthz");
   assert.equal(res.status, 200);
   assert.deepEqual(JSON.parse(res.body), { status: "ok" });
+});
+
+test("the app's manifest and service worker are served with the right types, never cached stale", async () => {
+  const manifest = await raw("/manifest.webmanifest");
+  assert.equal(manifest.headers["content-type"], "application/manifest+json");
+  const worker = await raw("/sw.js");
+  assert.equal(worker.headers["content-type"], "text/javascript; charset=utf-8");
+  assert.equal(worker.headers["cache-control"], "no-cache"); // a new worker is picked up on the next visit
 });

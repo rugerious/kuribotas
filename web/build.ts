@@ -1,7 +1,7 @@
 // Builds the web client into web/dist: one JavaScript bundle, one stylesheet, index.html.
 // Run with: npm run build --workspace web   (or npm run build at the root)
 import { build } from "esbuild";
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, cp, mkdir, rm } from "node:fs/promises";
 
 const outdir = "dist";
 
@@ -24,3 +24,4 @@ await build({
 });
 
 await copyFile("index.html", `${outdir}/index.html`);
+await cp("public", outdir, { recursive: true }); // manifest, icons and the service worker, as they are
