@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { authRoutes, sameOrigin, sessionPerson } from "./auth.ts";
 import { attachChat } from "./chat.ts";
 import { loadVapidKeys, webPushSender, type PushSend } from "./push.ts";
 import { familySounds, staticFiles } from "./static.ts";
-import { openStore } from "./store.ts";
+import { openStore, type Store } from "./store.ts";
 
 export type AppOptions = {
   // Path to the SQLite file, or ":memory:" for a throwaway database (tests).
@@ -17,10 +18,13 @@ export type AppOptions = {
   vapidPath?: string;
   // How notifications are sent; tests pass a fake that records them instead of calling Google or Apple.
   pushSend?: PushSend;
+  // Session cookies get the Secure flag (https only). Off for http://localhost while developing.
+  secureCookies?: boolean;
 };
 
 export type App = {
   server: Server;
+  store: Store; // for the console's invite command and for tests
   // Closes chat connections, then the HTTP server, then the database.
   close: () => Promise<void>;
 };
@@ -32,6 +36,8 @@ export function createApp(options: AppOptions): App {
   const serveStatic = options.webDir === undefined ? undefined : staticFiles(options.webDir);
   const serveSounds = options.soundsDir === undefined ? undefined : familySounds(options.soundsDir);
   const vapid = loadVapidKeys(options.vapidPath);
+  let signOut: (sessionHash: string) => void = () => {}; // set once the chat exists
+  const serveApi = authRoutes(store, { secureCookies: options.secureCookies ?? false, onSignOut: (hash) => signOut(hash) });
 
   const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method === "GET" && req.url === "/healthz") {
@@ -45,6 +51,7 @@ export function createApp(options: AppOptions): App {
       res.end(JSON.stringify({ publicKey: vapid.publicKey }));
       return;
     }
+    if (await serveApi(req, res)) return;
     if (serveSounds !== undefined && (await serveSounds(req, res))) return;
     if (serveStatic !== undefined && (await serveStatic(req, res))) return;
     res.writeHead(404, { "content-type": "application/json" });
@@ -62,10 +69,14 @@ export function createApp(options: AppOptions): App {
   const chat = attachChat(server, store, {
     heartbeatMs: options.heartbeatMs,
     pushSend: options.pushSend ?? webPushSender(vapid),
+    // Only our own page may open the chat, and only for someone signed in.
+    admit: (req) => (sameOrigin(req) ? (sessionPerson(store, req) ?? "signed_out") : "forbidden"),
   });
+  signOut = chat.signOut;
 
   return {
     server,
+    store,
     close: async () => {
       await chat.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));

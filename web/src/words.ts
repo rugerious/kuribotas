@@ -35,6 +35,22 @@ export type Words = {
     noteSave: string;
     connection: Record<"connecting" | "open" | "closed", string>;
   };
+  // The door (no session) and the welcome page (an invite link).
+  gate: {
+    doorTitle: string;
+    doorText: string;
+    welcomeTitle: string;
+    pickNick: string;
+    nickPlaceholder: string;
+    enter: string;
+    deviceTitle: (nick: string) => string;
+    deviceText: string;
+    checking: string;
+    errors: Record<
+      "invite_unknown" | "invite_used" | "invite_expired" | "invalid_nick" | "nick_taken" | "too_many_tries" | "other" | "offline",
+      string
+    >;
+  };
   events: {
     welcome: (nick: string, channels: string) => string;
     youJoined: (channel: string) => string;
@@ -128,6 +144,27 @@ const pt: Words = {
             ? `${n[0]} e ${n[1]} estão a escrever…`
             : `${n[0]}, ${n[1]} e mais ${n.length - 2} estão a escrever…`,
     connection: { connecting: "a ligar…", open: "ligado", closed: "sem ligação · a voltar…" },
+  },
+  gate: {
+    doorTitle: "Só com convite 🚪",
+    doorText: "O Kuribotas é da família. Pede um link de convite a um @ e abre-o neste aparelho.",
+    welcomeTitle: "Bem-vindo ao Kuribotas! 👋",
+    pickNick: "Escolhe o teu nick. Fica teu: mais ninguém o pode usar (podes mudá-lo depois com /nick).",
+    nickPlaceholder: "ex.: Estraga_Lar",
+    enter: "Entrar",
+    deviceTitle: (nick) => `Entrar como ${nick} neste aparelho?`,
+    deviceText: "Este link junta este aparelho à tua conta. Se não foste tu que o pediste, fecha esta página.",
+    checking: "a ver o convite…",
+    errors: {
+      invite_unknown: "Este link de convite não existe. Será que ficou cortado ao copiar?",
+      invite_used: "Este convite já foi usado. Pede outro 🙏",
+      invite_expired: "Este convite já expirou. Pede outro 🙏",
+      invalid_nick: "Nick inválido: 1 a 24 letras, números ou _-~*^.|[]{} (sem espaços).",
+      nick_taken: "Esse nick já tem dono. Escolhe outro.",
+      too_many_tries: "Tentativas a mais. Espera uns minutos e tenta outra vez.",
+      other: "Deu maka. Tenta outra vez.",
+      offline: "Sem ligação ao servidor. Tenta outra vez daqui a pouco.",
+    },
   },
   events: {
     welcome: (nick, chs) => `Bem-vindo, ${nick}! Canais: ${chs}. Escreve /ajuda para veres os comandos.`,
@@ -266,6 +303,27 @@ const en: Words = {
             ? `${n[0]} and ${n[1]} are typing…`
             : `${n[0]}, ${n[1]} and ${n.length - 2} more are typing…`,
     connection: { connecting: "connecting…", open: "online", closed: "offline · reconnecting…" },
+  },
+  gate: {
+    doorTitle: "Invite only 🚪",
+    doorText: "Kuribotas is for the family. Ask an @ for an invite link and open it on this device.",
+    welcomeTitle: "Welcome to Kuribotas! 👋",
+    pickNick: "Pick your nick. It's yours: nobody else can use it (you can change it later with /nick).",
+    nickPlaceholder: "e.g. Estraga_Lar",
+    enter: "Enter",
+    deviceTitle: (nick) => `Sign in as ${nick} on this device?`,
+    deviceText: "This link adds this device to your account. If you didn't ask for it, close this page.",
+    checking: "checking the invite…",
+    errors: {
+      invite_unknown: "This invite link doesn't exist. Maybe it got cut off when copied?",
+      invite_used: "This invite has already been used. Ask for another 🙏",
+      invite_expired: "This invite has expired. Ask for another 🙏",
+      invalid_nick: "Invalid nick: 1 to 24 letters, digits or _-~*^.|[]{} (no spaces).",
+      nick_taken: "That nick already belongs to someone. Pick another.",
+      too_many_tries: "Too many tries. Wait a few minutes and try again.",
+      other: "Something went wrong. Try again.",
+      offline: "Can't reach the server. Try again in a moment.",
+    },
   },
   events: {
     welcome: (nick, chs) => `Welcome, ${nick}! Channels: ${chs}. Type /help for commands.`,

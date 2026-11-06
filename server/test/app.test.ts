@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { createApp } from "../src/app.ts";
+import { signIn } from "./people.ts";
 
 type Msg = Record<string, unknown>;
 type Client = { ws: WebSocket; next: () => Promise<Msg>; closed: Promise<number> };
@@ -23,11 +24,15 @@ after(async () => {
   await app.close();
 });
 
-// Opens a WebSocket with Node's built-in client (the same API browsers have)
-// and queues incoming JSON messages so tests can await them in order.
-function connect(url: string): Promise<Client> {
+let people = 0;
+const newcomer = (): string => `Kamba-${++people}`;
+
+// Opens a WebSocket with Node's built-in client (the same API browsers have), as someone signed in
+// (a new person unless a cookie is given), from our own page, and queues incoming JSON messages.
+function connect(url: string, cookie = signIn(app.store, newcomer())): Promise<Client> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    // Node's client can send headers a browser would add by itself: the cookie and the page's origin.
+    const ws = new WebSocket(url, { headers: { cookie, origin: httpUrl } } as unknown as string[]);
     const queue: Msg[] = [];
     const waiting: ((m: Msg) => void)[] = [];
     const closed = new Promise<number>((r) => ws.addEventListener("close", (e) => r(e.code)));
@@ -86,7 +91,7 @@ test("unknown path returns 404", async () => {
   assert.equal(res.status, 404);
 });
 
-test("a newcomer gets a guest nick, the channel list, and lands in #mujimbo", limits, async () => {
+test("someone signed in gets their nick, the channel list, and lands in #mujimbo", limits, async () => {
   const c = await connect(wsUrl);
   const welcome = await until(c, ofType("welcome"));
   assert.match(String(welcome.nick), /^Kamba-\d+$/);

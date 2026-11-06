@@ -25,12 +25,14 @@ self.addEventListener("activate", (event) => {
 });
 
 // Network first, so a new version shows up straight away; the cache only answers when there is no
-// network. The chat itself (/ws), the family's private sounds and the health check never touch it.
+// network. The chat itself (/ws), the account API (/api/: who you are must never come from a cache),
+// the push key, the family's private sounds and the health check never touch it.
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
-  if (url.pathname === "/ws" || url.pathname === "/healthz" || url.pathname.startsWith("/sounds/")) return;
+  const live = ["/api/", "/push/", "/sounds/"].some((prefix) => url.pathname.startsWith(prefix));
+  if (live || url.pathname === "/ws" || url.pathname === "/healthz") return;
   event.respondWith(
     fetch(request)
       .then((response) => {

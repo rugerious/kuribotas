@@ -5,7 +5,6 @@ import {
   colourOf,
   initialState,
   isDm,
-  isGuestNick,
   totalUnread,
   reduce,
   ROOM_COLOURS,
@@ -41,7 +40,7 @@ const msg = (channel: string, nick: string, text: string, id = 1): ServerMessage
 function arrived(): State {
   return apply(
     english,
-    { type: "welcome", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] },
+    { type: "welcome", role: "member", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] },
     {
       type: "joined", private: false,
       channel: "#mujimbo",
@@ -166,7 +165,7 @@ test("someone else's status quietly updates the people list", () => {
 test("my own status is remembered and said once, in Portuguese on a Portuguese screen", () => {
   const pt = apply(
     initialState,
-    { type: "welcome", nick: "Kamba-1", channels: [{ name: "#mujimbo", topic: "" }] },
+    { type: "welcome", role: "member", nick: "Kamba-1", channels: [{ name: "#mujimbo", topic: "" }] },
     { type: "joined", private: false, channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
     { type: "presence", nick: "Kamba-1", status: "busy", note: "a fingir que trabalho" },
   );
@@ -178,7 +177,7 @@ test("my own status is remembered and said once, in Portuguese on a Portuguese s
 test("server errors are translated from their code", () => {
   const pt = apply(
     initialState,
-    { type: "welcome", nick: "Kamba-1", channels: [] },
+    { type: "welcome", role: "member", nick: "Kamba-1", channels: [] },
     { type: "joined", private: false, channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
     { type: "error", code: "join_first", detail: "#futebol", reason: "join #futebol first" },
   );
@@ -251,7 +250,7 @@ test("every nudge for me is a new one, even the same kind twice", () => {
 test("nudge errors are translated", () => {
   const pt = apply(
     initialState,
-    { type: "welcome", nick: "Kamba-1", channels: [] },
+    { type: "welcome", role: "member", nick: "Kamba-1", channels: [] },
     { type: "joined", private: false, channel: "#mujimbo", topic: "", members: [online("Kamba-1")], history: [] },
     { type: "error", code: "nudge_too_soon", detail: "7", reason: "too many nudges" },
   );
@@ -318,11 +317,6 @@ test("a private channel is marked, and invites are shown to both sides", () => {
   );
 });
 
-test("guest nicks are never remembered as a device's nick", () => {
-  assert.equal(isGuestNick("Kamba-12"), true);
-  assert.equal(isGuestNick("Estraga_Lar"), false);
-  assert.equal(isGuestNick("Kamba-Rita"), false);
-});
 
 test("a chinela flies across the open channel; only its target is hit; a batuque hits everyone", () => {
   const s = apply(arrived(), { type: "throw", channel: "#mujimbo", from: "Pai", to: "Guest-1", item: "chinela" });
@@ -366,7 +360,7 @@ test("a dropped connection is said once; coming back is said once", () => {
 
 test("rejoining keeps the screen and adds only the messages missed meanwhile", () => {
   const before = arrived(); // has message id 1 from Pai
-  const back = apply(before, { type: "welcome", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] }, {
+  const back = apply(before, { type: "welcome", role: "member", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] }, {
     type: "joined",
     private: false,
     channel: "#mujimbo",
@@ -385,7 +379,7 @@ test("rejoining keeps the screen and adds only the messages missed meanwhile", (
 test("after a reconnection, private channel tabs close with a note; private chats stay", () => {
   let s = apply(arrived(), { type: "joined", private: true, channel: "#primos", topic: "", members: [online("Guest-1")], history: [] });
   s = reduce(s, { type: "openDm", nick: "Pai" });
-  s = apply(s, { type: "welcome", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] });
+  s = apply(s, { type: "welcome", role: "member", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] });
   assert.deepEqual(
     s.rooms.map((r) => r.name),
     ["#mujimbo", "Pai"],

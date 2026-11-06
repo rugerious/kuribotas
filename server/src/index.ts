@@ -5,6 +5,8 @@ import { createApp } from "./app.ts";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
+// The address people use (invite links point there). https from phase 5, which also makes cookies Secure.
+const publicUrl = process.env.PUBLIC_URL ?? `http://localhost:${port}`;
 const dataDir = process.env.DATA_DIR ?? "data"; // git-ignored; /data in the Docker image
 // The built web client: web/dist next to server/ (same layout in the repo and in the image).
 const webDir = process.env.WEB_DIR ?? fileURLToPath(new URL("../../web/dist", import.meta.url));
@@ -19,7 +21,11 @@ const app = createApp({
   webDir,
   soundsDir: join(dataDir, "sounds"),
   vapidPath: join(dataDir, "vapid.json"), // the notification keys: private, created on first start
+  secureCookies: publicUrl.startsWith("https://"),
 });
+if (app.store.countPeople() === 0) {
+  console.log(`nobody has an account yet: make the first @ with "node server/src/invite.ts --admin"`);
+}
 
 app.server.listen(port, host, () => {
   console.log(`kuribotas server listening on http://${host}:${port} (WebSocket at /ws, data in ${dataDir})`);

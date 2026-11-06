@@ -1,30 +1,63 @@
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { isValidSubscription, type PushSend } from "./push.ts";
-import type { PushRow, Store } from "./store.ts";
+import { NICK_PATTERN, type Person, type PushRow, type Role, type Store } from "./store.ts";
 
-// One connected person. Nicks and statuses live in memory, IRC style (accounts come with invites, phase 4).
-// `typingIn`: channel -> when we last passed on "is typing" (to rate-limit it, and to know a stop is due).
-type Member = {
-  ws: WebSocket;
-  alive: boolean; // answered the last heartbeat ping
+// Someone with an account, as the chat sees them: one nick, one status, one set of limits, however many
+// devices they have open. Kept after they leave, so a reload doesn't reset the tornado limit.
+type Someone = {
+  id: number;
   nick: string;
+  role: Role;
   status: Status;
   note: string;
-  channels: Set<string>;
-  typingIn: Map<string, number>;
-  nudgedAt: number[]; // when this person's recent quick nudges were sent
-  tornadoAt: number | undefined; // when this person last sent a tornado
+  nudgedAt: number[]; // when their recent quick nudges were sent
+  tornadoAt: number | undefined; // when they last sent a tornado
   groupNudgeAt: number | undefined; // ...a nudge to the whole channel
   groupTornadoAt: number | undefined; // ...a tornado to the whole channel
   thrownAt: number[]; // recent chinelas, vassouras and colheres
   batuqueAt: number | undefined; // the last batuque
-  push: Pick<PushRow, "endpoint" | "p256dh" | "auth" | "lang"> | undefined; // this device's notifications
 };
 
+// One open connection: a phone, a computer. Each device has its own tabs (channels); nick and status
+// belong to the person. `typingIn`: channel -> when we last passed on "is typing".
+class Member {
+  ws: WebSocket;
+  who: Someone;
+  session: string; // the session's hash: signing that device out closes this connection
+  alive = true; // answered the last heartbeat ping
+  channels = new Set<string>();
+  typingIn = new Map<string, number>();
+  push: Pick<PushRow, "endpoint" | "p256dh" | "auth" | "lang"> | undefined = undefined; // this device's notifications
+
+  constructor(ws: WebSocket, who: Someone, session: string) {
+    this.ws = ws;
+    this.who = who;
+    this.session = session;
+  }
+
+  get nick(): string {
+    return this.who.nick;
+  }
+  set nick(nick: string) {
+    this.who.nick = nick;
+  }
+  get status(): Status {
+    return this.who.status;
+  }
+  set status(status: Status) {
+    this.who.status = status;
+  }
+  get note(): string {
+    return this.who.note;
+  }
+  set note(note: string) {
+    this.who.note = note;
+  }
+}
+
 const HOME_CHANNEL = "#mujimbo"; // everyone lands here
-const GUEST_PREFIX = "Kamba-"; // newcomers are friends: Kamba-1, Kamba-2...
 const HISTORY_LIMIT = 50; // messages sent when joining a channel
 const MAX_TEXT_LENGTH = 2000; // characters per chat message
 const MAX_TOPIC_LENGTH = 200; // characters per topic
@@ -48,38 +81,45 @@ const MAX_PUSH_TEXT = 140; // characters of a message shown in a notification
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 const THROW_ITEMS: readonly ThrowItem[] = ["chinela", "vassoura", "colher", "batuque"];
 
-// Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
-const NICK_PATTERN = /^[\p{L}\p{N}_\-~*^.|[\]{}]{1,24}$/u;
 // Channels: "#" + 1-32 letters, digits, _ or -. Stored in lower case: #Futebol and #futebol are one channel.
 const CHANNEL_PATTERN = /^#[\p{L}\p{N}_-]{1,32}$/u;
 
-export type Chat = { close: () => Promise<void> };
+export type Chat = {
+  close: () => Promise<void>;
+  signOut: (sessionHash: string) => void; // close the connections of a device that signed out
+};
+
+// Who may open the chat: the signed-in person, or why not (no session; another site's page).
+export type Admit = (req: IncomingMessage) => { person: Person; sessionHash: string } | "signed_out" | "forbidden";
+
+// Close code for a device whose session ended: the app goes back to the door instead of reconnecting.
+export const SIGNED_OUT = 4401;
 
 // A private channel lives in memory until its last member leaves: no row in the database, no saved
-// messages, hidden from the channel list. Only invited connections may join (accounts come in phase 4).
-type PrivateChannel = { topic: string; invited: Set<Member> };
+// messages, hidden from the channel list. Only invited people may join; leaving means asking again.
+type PrivateChannel = { topic: string; invited: Set<number> };
 
 export function attachChat(
   server: Server,
   store: Store,
-  options: { heartbeatMs?: number; pushSend?: PushSend } = {},
+  options: { heartbeatMs?: number; pushSend?: PushSend; admit?: Admit } = {},
 ): Chat {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const members = new Set<Member>();
+  const people = new Map<number, Someone>();
   const privates = new Map<string, PrivateChannel>();
   const lastMentionPush = new Map<string, number>(); // endpoint -> when
-  let guestCounter = 0;
 
-  // Only /ws may upgrade to a WebSocket; anything else is refused. "/ws?nick=Kota" asks to arrive
-  // with that nick (a device remembers its nick); if it is invalid or taken, you arrive as a guest.
+  // Only /ws may upgrade to a WebSocket, only from our own page, and only for someone signed in.
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname !== "/ws") {
-      socket.destroy();
+    const admitted = url.pathname === "/ws" && options.admit !== undefined ? options.admit(req) : "forbidden";
+    if (typeof admitted === "string") {
+      socket.end(admitted === "signed_out" ? "HTTP/1.1 401 Unauthorized\r\n\r\n" : "HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, url.searchParams.get("nick") ?? "");
+      wss.emit("connection", ws, admitted);
     });
   });
 
@@ -95,34 +135,39 @@ export function attachChat(
   }, options.heartbeatMs ?? HEARTBEAT_MS);
   heartbeat.unref();
 
-  wss.on("connection", (ws, wanted: string) => {
+  wss.on("connection", (ws, admitted: { person: Person; sessionHash: string }) => {
     // Without an error listener, one bad client (e.g. an oversized frame) would crash the process.
     ws.on("error", (err) => {
       console.warn(`websocket error: ${err.message}`);
     });
 
-    const asked = wanted.trim();
-    const me: Member = {
-      ws,
-      alive: true,
-      nick: NICK_PATTERN.test(asked) && !nickTaken(asked) ? asked : newGuestNick(),
+    const { person } = admitted;
+    const who = people.get(person.id) ?? {
+      id: person.id,
+      nick: person.nick,
+      role: person.role,
       status: "online",
       note: "",
-      channels: new Set(),
-      typingIn: new Map(),
       nudgedAt: [],
       tornadoAt: undefined,
       groupNudgeAt: undefined,
       groupTornadoAt: undefined,
       thrownAt: [],
       batuqueAt: undefined,
-      push: undefined,
     };
+    people.set(person.id, who);
+    who.nick = person.nick; // the database is the truth (a nick changed on another device)
+    who.role = person.role;
+    if (devicesOf(who).length === 0) {
+      who.status = "online"; // a fresh arrival; the app puts its status back if it had one
+      who.note = "";
+    }
+    const me = new Member(ws, who, admitted.sessionHash);
     ws.on("pong", () => {
       me.alive = true;
     });
     members.add(me);
-    send(me, { type: "welcome", nick: me.nick, channels: store.listChannels() });
+    send(me, { type: "welcome", nick: me.nick, role: who.role, channels: store.listChannels() });
     run(me, () => join(me, HOME_CHANNEL));
 
     ws.on("message", (data, isBinary) => {
@@ -133,16 +178,25 @@ export function attachChat(
     });
 
     ws.on("close", () => {
-      const peers = peersOf(me);
       members.delete(me);
-      for (const channel of me.channels) forgetPrivate(channel, me);
-      for (const p of privates.values()) p.invited.delete(me);
+      const left = [...me.channels].filter((channel) => !personIn(who, channel)); // no other device of theirs there
+      for (const channel of left) forgetPrivate(channel, who);
+      const gone = devicesOf(who).length === 0;
+      if (gone) for (const p of privates.values()) p.invited.delete(who.id);
       if (!visible(me)) return; // they already looked gone
+      if (!gone) {
+        // Still here on another device: only the channels this one alone was in see them leave.
+        for (const channel of left) sendToChannel(channel, { type: "part", channel, nick: me.nick });
+        return;
+      }
+      const peers = new Set<Member>();
+      for (const channel of me.channels) for (const m of membersOf(channel)) peers.add(m);
       for (const other of peers) send(other, { type: "quit", nick: me.nick });
     });
   });
 
   function handle(me: Member, msg: ClientMessage): void {
+    const who = me.who;
     switch (msg.type) {
       case "nick": {
         const nick = msg.nick.trim();
@@ -150,13 +204,14 @@ export function attachChat(
           return reject(me, "invalid_nick", nick, "invalid nick: use 1-24 letters, digits or _-~*^.|[]{} (no spaces)");
         }
         if (nick === me.nick) return;
-        if (nickTaken(nick, me)) return reject(me, "nick_taken", nick, `nick already in use: ${nick}`);
+        // A nick belongs to one person, online or not: it's saved with their account.
+        if (!store.renamePerson(who.id, nick)) return reject(me, "nick_taken", nick, `nick already in use: ${nick}`);
         const old = me.nick;
         me.nick = nick;
+        store.renamePush(old, nick); // notifications follow, on every device
         const change: ServerMessage = { type: "nick", old, nick };
         if (visible(me)) for (const other of members) send(other, change);
-        else send(me, change); // invisible people change nick in private
-        syncPush(me);
+        else sendPerson(who, change); // invisible people change nick in private
         return;
       }
       case "join": {
@@ -170,8 +225,8 @@ export function attachChat(
           if (store.listChannels().some((c) => c.name === channel)) {
             return reject(me, "channel_exists", channel, `${channel} is already a public channel`);
           }
-          privates.set(channel, { topic: "", invited: new Set([me]) });
-        } else if (secret !== undefined && !secret.invited.has(me)) {
+          privates.set(channel, { topic: "", invited: new Set([who.id]) });
+        } else if (secret !== undefined && !secret.invited.has(who.id)) {
           return reject(me, "invite_only", channel, `${channel} is private: ask a member to /invite you`);
         }
         join(me, channel);
@@ -185,24 +240,24 @@ export function attachChat(
         if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't throw things while invisible");
         const now = Date.now();
         if (msg.item === "batuque") {
-          const wait = me.batuqueAt === undefined ? 0 : me.batuqueAt + BATUQUE_EVERY_MS - now;
+          const wait = me.who.batuqueAt === undefined ? 0 : me.who.batuqueAt + BATUQUE_EVERY_MS - now;
           if (wait > 0) return reject(me, "batuque_too_soon", seconds(wait), "one batuque a minute");
-          me.batuqueAt = now;
+          me.who.batuqueAt = now;
           sendToChannel(channel, { type: "throw", channel, from: me.nick, to: null, item: "batuque" });
           return;
         }
         const wanted = (msg.nick ?? "").trim().toLowerCase();
-        const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
+        const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m.who === who || visible(m)));
         const away = target === undefined ? awayDevices(msg.nick ?? "", channel) : [];
         if (target === undefined && away.length === 0) {
           return reject(me, "no_such_nick", (msg.nick ?? "").trim(), `no ${msg.nick ?? ""} in ${channel}`);
         }
-        me.thrownAt = me.thrownAt.filter((at) => now - at < THROW_WINDOW_MS);
-        const oldest = me.thrownAt[0];
-        if (me.thrownAt.length >= THROW_BURST && oldest !== undefined) {
+        me.who.thrownAt = me.who.thrownAt.filter((at) => now - at < THROW_WINDOW_MS);
+        const oldest = me.who.thrownAt[0];
+        if (me.who.thrownAt.length >= THROW_BURST && oldest !== undefined) {
           return reject(me, "throw_too_soon", seconds(oldest + THROW_WINDOW_MS - now), "too many throws");
         }
-        me.thrownAt.push(now);
+        me.who.thrownAt.push(now);
         const to = target?.nick ?? away[0]?.nick ?? wanted;
         sendToChannel(channel, { type: "throw", channel, from: me.nick, to, item: msg.item });
         for (const row of away) notify(row, msg.item, me.nick, channel, "", "high");
@@ -213,13 +268,13 @@ export function attachChat(
         if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
         const target = findVisible(msg.nick, me);
         if (target === undefined) return reject(me, "no_such_nick", msg.nick.trim(), `nobody called ${msg.nick.trim()}`);
-        if (target.channels.has(channel)) {
+        if (personIn(target.who, channel)) {
           return reject(me, "already_in_channel", target.nick, `${target.nick} is already in ${channel}`);
         }
-        privates.get(channel)?.invited.add(target); // a public channel needs no ticket: the invite is just a nudge to come
+        privates.get(channel)?.invited.add(target.who.id); // a public channel needs no ticket: the invite is just a nudge to come
         const invited: ServerMessage = { type: "invited", channel, from: me.nick, to: target.nick };
-        send(target, invited);
-        if (target !== me) send(me, invited);
+        sendPerson(target.who, invited);
+        if (target.who !== who) sendPerson(who, invited);
         return;
       }
       case "msg": {
@@ -230,19 +285,20 @@ export function attachChat(
         const target = findVisible(msg.to, me);
         if (target === undefined) return reject(me, "no_such_nick", msg.to.trim(), `nobody called ${msg.to.trim()}`);
         const dm: ServerMessage = { type: "dm", from: me.nick, to: target.nick, kind: msg.kind, text, at: new Date().toISOString() };
-        send(target, dm);
-        if (target !== me) send(me, dm);
+        sendPerson(target.who, dm); // every device of theirs, and of mine
+        if (target.who !== who) sendPerson(who, dm);
         return;
       }
       case "part": {
         const channel = normaliseChannel(msg.channel);
         if (!me.channels.has(channel)) return reject(me, "not_in_channel", channel, `you are not in ${channel}`);
         const part: ServerMessage = { type: "part", channel, nick: me.nick };
-        if (visible(me)) sendToChannel(channel, part); // the leaver sees it too
+        const elsewhere = devicesOf(who).some((d) => d !== me && d.channels.has(channel)); // still there on another device
+        if (visible(me) && !elsewhere) sendToChannel(channel, part); // the leaver sees it too
         else send(me, part);
         me.channels.delete(channel);
         me.typingIn.delete(channel);
-        forgetPrivate(channel, me);
+        if (!elsewhere) forgetPrivate(channel, who);
         syncPush(me);
         return;
       }
@@ -281,19 +337,19 @@ export function attachChat(
           return reject(me, "note_too_long", String(MAX_NOTE_LENGTH), `note too long (max ${MAX_NOTE_LENGTH})`);
         }
         const wasVisible = visible(me);
-        me.status = msg.status;
+        me.status = msg.status; // for every device of theirs: status is the person's
         me.note = note;
-        if (!visible(me)) me.typingIn.clear(); // the others saw a quit, which clears it on their side
-        const peers = peersOf(me);
+        if (!visible(me)) for (const d of devicesOf(who)) d.typingIn.clear(); // the others saw a quit, which clears it
+        const peers = peersOf(who);
         // Going invisible looks exactly like leaving; coming back looks like arriving (MSN did the same).
         if (wasVisible && !visible(me)) for (const other of peers) send(other, { type: "quit", nick: me.nick });
         if (!wasVisible && visible(me)) {
-          for (const channel of me.channels) sendToChannel(channel, { type: "join", channel, nick: me.nick }, me);
+          for (const channel of channelsOf(who)) sendToChannel(channel, { type: "join", channel, nick: me.nick }, who);
         }
         const presence: ServerMessage = { type: "presence", nick: me.nick, status: me.status, note: me.note };
-        send(me, presence);
+        sendPerson(who, presence);
         if (visible(me)) for (const other of peers) send(other, presence);
-        syncPush(me); // No biolo = quiet
+        for (const d of devicesOf(who)) syncPush(d); // No biolo = quiet
         return;
       }
       case "push": {
@@ -314,7 +370,7 @@ export function attachChat(
           // In a private chat: keyed "@nick" so it shares the rate limit machinery with channels.
           if (!visible(me)) return;
           const target = findVisible(msg.to, me);
-          if (target === undefined || target === me) return;
+          if (target === undefined || target.who === who) return;
           const key = `@${target.nick.toLowerCase()}`;
           const last = me.typingIn.get(key);
           if (msg.typing) {
@@ -325,7 +381,7 @@ export function attachChat(
             if (last === undefined) return;
             me.typingIn.delete(key);
           }
-          send(target, { type: "typing", dm: true, nick: me.nick, typing: msg.typing });
+          sendPerson(target.who, { type: "typing", dm: true, nick: me.nick, typing: msg.typing });
           return;
         }
         const channel = normaliseChannel(msg.channel);
@@ -339,7 +395,7 @@ export function attachChat(
           if (last === undefined) return; // nothing to stop
           me.typingIn.delete(channel);
         }
-        sendToChannel(channel, { type: "typing", channel, nick: me.nick, typing: msg.typing }, me);
+        sendToChannel(channel, { type: "typing", channel, nick: me.nick, typing: msg.typing }, who);
         return;
       }
       case "nudge": {
@@ -352,8 +408,8 @@ export function attachChat(
           const wait = nudgeWait(me, msg.tornado, Date.now());
           if (wait !== null) return reject(me, wait.code, wait.seconds, "too many nudges");
           const dm: ServerMessage = { type: "nudge", dm: true, from: me.nick, to: target.nick, tornado: msg.tornado };
-          send(target, dm);
-          if (target !== me) send(me, dm);
+          sendPerson(target.who, dm);
+          if (target.who !== who) sendPerson(who, dm);
           return;
         }
         const channel = normaliseChannel(msg.channel);
@@ -362,20 +418,20 @@ export function attachChat(
         const now = Date.now();
         if ("everyone" in msg) {
           // Everyone in the channel shakes except the sender (invisible people too: they only receive).
-          const last = msg.tornado ? me.groupTornadoAt : me.groupNudgeAt;
+          const last = msg.tornado ? me.who.groupTornadoAt : me.who.groupNudgeAt;
           const every = msg.tornado ? GROUP_TORNADO_EVERY_MS : GROUP_NUDGE_EVERY_MS;
           const wait = last === undefined ? 0 : last + every - now;
           if (wait > 0) {
             return reject(me, msg.tornado ? "tornado_too_soon" : "nudge_too_soon", seconds(wait), "one group nudge at a time");
           }
-          if (msg.tornado) me.groupTornadoAt = now;
-          else me.groupNudgeAt = now;
+          if (msg.tornado) me.who.groupTornadoAt = now;
+          else me.who.groupNudgeAt = now;
           sendToChannel(channel, { type: "nudge", channel, from: me.nick, to: null, tornado: msg.tornado });
           return;
         }
         const wanted = msg.nick.trim().toLowerCase();
         // Invisible people get the same answer as nobody at all, so a nudge can't find them.
-        const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m === me || visible(m)));
+        const target = membersOf(channel).find((m) => m.nick.toLowerCase() === wanted && (m.who === who || visible(m)));
         // Not here, but their phone asked for notifications from this channel: the nudge reaches the pocket.
         const away = target === undefined ? awayDevices(msg.nick, channel) : [];
         if (target === undefined && away.length === 0) {
@@ -396,15 +452,16 @@ export function attachChat(
   function join(me: Member, channel: string): void {
     const secret = privates.get(channel);
     const topic = secret?.topic ?? store.createChannel(channel, new Date().toISOString()).topic;
-    if (visible(me)) sendToChannel(channel, { type: "join", channel, nick: me.nick }); // the others already in it
+    // The others already in it see them arrive, unless they're already there on another device.
+    if (visible(me) && !personIn(me.who, channel)) sendToChannel(channel, { type: "join", channel, nick: me.nick });
     me.channels.add(channel);
+    const listed = new Map<Someone, Member>(); // one line per person, however many devices
+    for (const m of membersOf(channel)) if (m.who === me.who || visible(m)) listed.set(m.who, m);
     send(me, {
       type: "joined",
       channel,
       topic,
-      members: membersOf(channel)
-        .filter((m) => m === me || visible(m))
-        .map(info),
+      members: [...listed.values()].map(info),
       history: secret === undefined ? store.recentMessages(channel, HISTORY_LIMIT) : [],
       private: secret !== undefined,
     });
@@ -455,32 +512,49 @@ export function attachChat(
   // Returns what to refuse with, or null after counting this one.
   function nudgeWait(me: Member, tornado: boolean, now: number): { code: ErrorCode; seconds: string } | null {
     if (tornado) {
-      const wait = me.tornadoAt === undefined ? 0 : me.tornadoAt + TORNADO_EVERY_MS - now;
+      const wait = me.who.tornadoAt === undefined ? 0 : me.who.tornadoAt + TORNADO_EVERY_MS - now;
       if (wait > 0) return { code: "tornado_too_soon", seconds: seconds(wait) };
-      me.tornadoAt = now;
+      me.who.tornadoAt = now;
       return null;
     }
-    me.nudgedAt = me.nudgedAt.filter((at) => now - at < NUDGE_WINDOW_MS);
-    const oldest = me.nudgedAt[0];
-    if (me.nudgedAt.length >= NUDGE_BURST && oldest !== undefined) {
+    me.who.nudgedAt = me.who.nudgedAt.filter((at) => now - at < NUDGE_WINDOW_MS);
+    const oldest = me.who.nudgedAt[0];
+    if (me.who.nudgedAt.length >= NUDGE_BURST && oldest !== undefined) {
       return { code: "nudge_too_soon", seconds: seconds(oldest + NUDGE_WINDOW_MS - now) };
     }
-    me.nudgedAt.push(now);
+    me.who.nudgedAt.push(now);
     return null;
   }
 
-  // When the last member leaves a private channel, it is gone: name, topic and invites.
-  function forgetPrivate(channel: string, leaving: Member): void {
+  // Called once a person is no longer in a private channel on any device. The last one out takes it along.
+  function forgetPrivate(channel: string, leaving: Someone): void {
     const secret = privates.get(channel);
     if (secret === undefined) return;
-    secret.invited.delete(leaving); // leaving means asking again to come back
-    if (membersOf(channel).every((m) => m === leaving)) privates.delete(channel);
+    secret.invited.delete(leaving.id); // leaving means asking again to come back
+    if (membersOf(channel).every((m) => m.who === leaving)) privates.delete(channel);
   }
 
   // Someone online by nick (any case). Invisible people are not found, except by themselves.
   function findVisible(nick: string, asking: Member): Member | undefined {
     const wanted = nick.trim().toLowerCase();
-    return [...members].find((m) => m.nick.toLowerCase() === wanted && (m === asking || visible(m)));
+    return [...members].find((m) => m.nick.toLowerCase() === wanted && (m.who === asking.who || visible(m)));
+  }
+
+  function devicesOf(who: Someone): Member[] {
+    return [...members].filter((m) => m.who === who);
+  }
+
+  const personIn = (who: Someone, channel: string): boolean => devicesOf(who).some((d) => d.channels.has(channel));
+
+  function channelsOf(who: Someone): Set<string> {
+    const channels = new Set<string>();
+    for (const d of devicesOf(who)) for (const c of d.channels) channels.add(c);
+    return channels;
+  }
+
+  function sendPerson(who: Someone, msg: ServerMessage): void {
+    const data = JSON.stringify(msg);
+    for (const d of devicesOf(who)) sendRaw(d, data);
   }
 
   // A failing store must never crash the server or kill the connection.
@@ -493,36 +567,20 @@ export function attachChat(
     }
   }
 
-  function newGuestNick(): string {
-    let nick: string;
-    do {
-      guestCounter += 1;
-      nick = `${GUEST_PREFIX}${guestCounter}`;
-    } while (nickTaken(nick));
-    return nick;
-  }
-
-  // Nicks are unique, ignoring case: "Rita" and "rita" can't both be online (invisible people count too).
-  function nickTaken(nick: string, except?: Member): boolean {
-    const wanted = nick.toLowerCase();
-    for (const m of members) if (m !== except && m.nick.toLowerCase() === wanted) return true;
-    return false;
-  }
-
   function membersOf(channel: string): Member[] {
     return [...members].filter((m) => m.channels.has(channel));
   }
 
-  // Everyone who shares at least one channel with this person, once each.
-  function peersOf(me: Member): Set<Member> {
+  // Every device of everyone who shares at least one channel with this person (not their own), once each.
+  function peersOf(who: Someone): Set<Member> {
     const peers = new Set<Member>();
-    for (const channel of me.channels) for (const m of membersOf(channel)) if (m !== me) peers.add(m);
+    for (const channel of channelsOf(who)) for (const m of membersOf(channel)) if (m.who !== who) peers.add(m);
     return peers;
   }
 
-  function sendToChannel(channel: string, msg: ServerMessage, except?: Member): void {
+  function sendToChannel(channel: string, msg: ServerMessage, except?: Someone): void {
     const data = JSON.stringify(msg);
-    for (const m of membersOf(channel)) if (m !== except) sendRaw(m, data);
+    for (const m of membersOf(channel)) if (m.who !== except) sendRaw(m, data);
   }
 
   function reject(me: Member, code: ErrorCode, detail: string, reason: string): void {
@@ -530,6 +588,9 @@ export function attachChat(
   }
 
   return {
+    signOut: (sessionHash) => {
+      for (const m of members) if (m.session === sessionHash) m.ws.close(SIGNED_OUT, "signed out");
+    },
     // Say goodbye to every client (1001 = going away), force-close stragglers, then stop.
     close: () =>
       new Promise<void>((resolve) => {

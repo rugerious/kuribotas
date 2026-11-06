@@ -25,6 +25,27 @@ export type PushRow = {
   at: string;
 };
 
+// Someone with an account (phase 4): a nick that belongs to them, on as many devices as they like.
+// "admin" is the @ of IRC: can invite new people.
+export type Role = "admin" | "member";
+export type Person = { id: number; nick: string; role: Role };
+
+// An invite link: "person" brings someone new (they pick their nick), "device" adds a phone or computer
+// to someone who is already in. Only a hash of the token is stored: the link itself is never in the database.
+export type InviteKind = "person" | "device";
+export type Invite = {
+  kind: InviteKind;
+  personId: number | null; // device links: whose device; person invites: null
+  role: Role; // the role a new person gets
+  createdBy: number | null; // null = made on the server's console (the very first @)
+  expiresAt: string;
+  usedAt: string | null;
+};
+
+export type RedeemResult =
+  | { ok: true; person: Person }
+  | { ok: false; error: "invite_unknown" | "invite_used" | "invite_expired" | "invalid_nick" | "nick_taken" };
+
 export type Store = {
   getChannel: (name: string) => Channel | undefined;
   createChannel: (name: string, at: string) => Channel; // returns the existing one if it already exists
@@ -36,6 +57,17 @@ export type Store = {
   deletePush: (endpoint: string) => void;
   pushFor: (nick: string) => PushRow[]; // any case
   pushInChannel: (channel: string) => PushRow[];
+  renamePush: (oldNick: string, nick: string) => void; // a person's other devices follow a nick change
+  countPeople: () => number;
+  personByNick: (nick: string) => Person | undefined; // any case
+  personById: (id: number) => Person | undefined;
+  renamePerson: (id: number, nick: string) => boolean; // false if someone else has that nick
+  createInvite: (tokenHash: string, invite: Omit<Invite, "usedAt">, at: string) => void;
+  invite: (tokenHash: string) => Invite | undefined;
+  // Uses the invite (once, ever) and opens a session, all or nothing. `nick` only for person invites.
+  redeem: (tokenHash: string, nick: string, sessionHash: string, device: string, now: string) => RedeemResult;
+  sessionPerson: (sessionHash: string, now: string) => Person | undefined; // also marks it as seen
+  deleteSession: (sessionHash: string) => void;
   close: () => void;
 };
 
@@ -88,7 +120,40 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX push_by_nick ON push_subscriptions (lower(nick));
   `,
+  `
+  -- v4: accounts. A person owns a nick; each device they use has a session; invites bring people in.
+  -- Tokens are stored as SHA-256 hashes, so a copy of the database can't be used to sign in.
+  CREATE TABLE people (
+    id         INTEGER PRIMARY KEY,
+    nick       TEXT NOT NULL,
+    role       TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    invited_by INTEGER REFERENCES people (id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX people_by_nick ON people (lower(nick));
+  CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    person_id  INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+    device     TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    seen_at    TEXT NOT NULL
+  );
+  CREATE INDEX sessions_by_person ON sessions (person_id);
+  CREATE TABLE invites (
+    token_hash TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN ('person', 'device')),
+    person_id  INTEGER REFERENCES people (id) ON DELETE CASCADE,
+    role       TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    created_by INTEGER REFERENCES people (id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at    TEXT
+  );
+  `,
 ];
+
+// Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
+export const NICK_PATTERN = /^[\p{L}\p{N}_\-~*^.|[\]{}]{1,24}$/u;
 
 // Opens (or creates) the database and brings its schema up to date.
 // Use ":memory:" for a throwaway database in tests.
@@ -96,6 +161,7 @@ export function openStore(path: string): Store {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL"); // readers don't block the writer; crash-safe writes
   db.exec("PRAGMA busy_timeout = 5000"); // wait up to 5 s instead of failing if the file is busy
+  db.exec("PRAGMA foreign_keys = ON"); // a removed person takes their sessions and invites along
   migrate(db);
 
   // Prepared once, reused for every call. Values are bound, never glued into SQL (no injection).
@@ -137,6 +203,48 @@ export function openStore(path: string): Store {
     WHERE EXISTS (SELECT 1 FROM json_each(channels) WHERE value = :channel)
   `);
 
+  const updatePushNick = db.prepare("UPDATE push_subscriptions SET nick = :nick WHERE lower(nick) = lower(:oldNick)");
+
+  const selectPeopleCount = db.prepare("SELECT count(*) AS n FROM people");
+  const selectPersonByNick = db.prepare("SELECT id, nick, role FROM people WHERE lower(nick) = lower(:nick)");
+  const updatePersonNick = db.prepare("UPDATE people SET nick = :nick WHERE id = :id");
+  const insertPerson = db.prepare(
+    "INSERT INTO people (nick, role, invited_by, created_at) VALUES (:nick, :role, :invitedBy, :at) RETURNING id",
+  );
+  const insertInvite = db.prepare(`
+    INSERT INTO invites (token_hash, kind, person_id, role, created_by, created_at, expires_at)
+    VALUES (:tokenHash, :kind, :personId, :role, :createdBy, :at, :expiresAt)
+  `);
+  const selectInvite = db.prepare(
+    "SELECT kind, person_id, role, created_by, expires_at, used_at FROM invites WHERE token_hash = :tokenHash",
+  );
+  const markInviteUsed = db.prepare("UPDATE invites SET used_at = :at WHERE token_hash = :tokenHash AND used_at IS NULL");
+  const insertSession = db.prepare(`
+    INSERT INTO sessions (token_hash, person_id, device, created_at, seen_at)
+    VALUES (:sessionHash, :personId, :device, :at, :at)
+  `);
+  const selectSessionPerson = db.prepare(`
+    SELECT p.id AS id, p.nick AS nick, p.role AS role
+    FROM sessions s JOIN people p ON p.id = s.person_id
+    WHERE s.token_hash = :sessionHash
+  `);
+  const touchSession = db.prepare("UPDATE sessions SET seen_at = :at WHERE token_hash = :sessionHash");
+  const removeSession = db.prepare("DELETE FROM sessions WHERE token_hash = :sessionHash");
+  const selectPersonById = db.prepare("SELECT id, nick, role FROM people WHERE id = :id");
+
+  const readInvite = (tokenHash: string): Invite | undefined => {
+    const row = selectInvite.get({ tokenHash });
+    if (row === undefined) return undefined;
+    return {
+      kind: row.kind === "device" ? "device" : "person",
+      personId: row.person_id === null ? null : Number(row.person_id),
+      role: row.role === "admin" ? "admin" : "member",
+      createdBy: row.created_by === null ? null : Number(row.created_by),
+      expiresAt: String(row.expires_at),
+      usedAt: row.used_at === null ? null : String(row.used_at),
+    };
+  };
+
   const getChannel = (name: string): Channel | undefined => {
     const row = selectChannel.get({ name });
     return row === undefined ? undefined : toChannel(row);
@@ -174,8 +282,73 @@ export function openStore(path: string): Store {
     },
     pushFor: (nick) => selectPushByNick.all({ nick }).map((row) => toPush(row)),
     pushInChannel: (channel) => selectPushByChannel.all({ channel }).map((row) => toPush(row)),
+    renamePush: (oldNick, nick) => {
+      updatePushNick.run({ oldNick, nick });
+    },
+    countPeople: () => Number(selectPeopleCount.get()?.n ?? 0),
+    personByNick: (nick) => {
+      const row = selectPersonByNick.get({ nick });
+      return row === undefined ? undefined : toPerson(row);
+    },
+    personById: (id) => {
+      const row = selectPersonById.get({ id });
+      return row === undefined ? undefined : toPerson(row);
+    },
+    renamePerson: (id, nick) => {
+      const other = selectPersonByNick.get({ nick });
+      if (other !== undefined && Number(other.id) !== id) return false;
+      updatePersonNick.run({ id, nick });
+      return true;
+    },
+    createInvite: (tokenHash, invite, at) => {
+      insertInvite.run({ tokenHash, ...invite, at });
+    },
+    invite: readInvite,
+    redeem: (tokenHash, nick, sessionHash, device, now) => {
+      // One transaction: two people opening the same link at once can't both get in, and a failure
+      // half way (say, the nick was taken a moment ago) leaves the invite unused.
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const result = redeemInside(tokenHash, nick.trim(), sessionHash, device, now);
+        db.exec(result.ok ? "COMMIT" : "ROLLBACK");
+        return result;
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+    },
+    sessionPerson: (sessionHash, now) => {
+      const row = selectSessionPerson.get({ sessionHash });
+      if (row === undefined) return undefined;
+      touchSession.run({ sessionHash, at: now });
+      return toPerson(row);
+    },
+    deleteSession: (sessionHash) => {
+      removeSession.run({ sessionHash });
+    },
     close: () => db.close(),
   };
+
+  function redeemInside(tokenHash: string, nick: string, sessionHash: string, device: string, now: string): RedeemResult {
+    const invite = readInvite(tokenHash);
+    if (invite === undefined) return { ok: false, error: "invite_unknown" };
+    if (invite.usedAt !== null) return { ok: false, error: "invite_used" };
+    if (invite.expiresAt <= now) return { ok: false, error: "invite_expired" };
+    let person: Person | undefined;
+    if (invite.kind === "device") {
+      const row = invite.personId === null ? undefined : selectPersonById.get({ id: invite.personId });
+      person = row === undefined ? undefined : toPerson(row);
+      if (person === undefined) return { ok: false, error: "invite_unknown" };
+    } else {
+      if (!NICK_PATTERN.test(nick)) return { ok: false, error: "invalid_nick" };
+      if (selectPersonByNick.get({ nick }) !== undefined) return { ok: false, error: "nick_taken" };
+      const row = insertPerson.get({ nick, role: invite.role, invitedBy: invite.createdBy, at: now });
+      person = { id: Number(row?.id), nick, role: invite.role };
+    }
+    if (Number(markInviteUsed.run({ tokenHash, at: now }).changes) !== 1) return { ok: false, error: "invite_used" };
+    insertSession.run({ sessionHash, personId: person.id, device, at: now });
+    return { ok: true, person };
+  }
 }
 
 function migrate(db: DatabaseSync): void {
@@ -209,6 +382,10 @@ function toMessage(row: Record<string, unknown>): StoredMessage {
     text: String(row.text),
     at: String(row.at),
   };
+}
+
+function toPerson(row: Record<string, unknown>): Person {
+  return { id: Number(row.id), nick: String(row.nick), role: row.role === "admin" ? "admin" : "member" };
 }
 
 function toPush(row: Record<string, unknown>): PushRow {

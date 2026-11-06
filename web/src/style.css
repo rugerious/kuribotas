@@ -550,6 +550,82 @@ body::after {
   cursor: not-allowed;
 }
 
+/* The door and the welcome page: before the chat, one card in the middle */
+.gate {
+  height: 100vh;
+  height: 100dvh; /* the phone's real height, without the browser bars */
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  padding-top: max(24px, env(safe-area-inset-top));
+}
+.gate-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 24px;
+  border: 1px solid var(--border);
+  background: var(--bg); /* the same black as the peeker's wall, so it sits on top of the card */
+  text-align: center;
+}
+.gate-peeker .peeker {
+  width: 120px;
+  height: 68px;
+}
+.gate .brand {
+  margin: 8px 0 18px;
+  font-size: 40px;
+}
+.gate h2 {
+  margin: 0 0 12px;
+  font: 400 24px/1.1 var(--display);
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+.gate-text {
+  display: block;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.gate-error {
+  margin: 0 0 14px;
+  color: var(--error);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.gate input {
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: 14px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: 16px var(--mono);
+  text-align: center;
+}
+.gate input::placeholder {
+  color: var(--muted);
+}
+.gate button[type="submit"] {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--amber);
+  background: var(--amber);
+  color: var(--bg);
+  font: 500 14px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.gate button[type="submit"]:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--room);

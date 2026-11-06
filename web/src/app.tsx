@@ -5,7 +5,6 @@ import {
   colourOf,
   initialState,
   isDm,
-  isGuestNick,
   reduce,
   totalUnread,
   ROOM_COLOURS,
@@ -30,6 +29,7 @@ import { Peeker } from "./peeker.tsx";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
+const SIGNED_OUT = 4401; // the server's close code for a session that ended (server/src/chat.ts)
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 
@@ -93,10 +93,6 @@ const subscriptionMessage = (sub: PushSubscription, lang: Lang): ClientMessage =
 
 // This device's nudge and tornado sounds (/som, /som tornado).
 const SOUND_KEYS: Record<SoundKind, string> = { nudge: "kuribotas.sound", tornado: "kuribotas.sound.tornado" };
-const NICK_KEY = "kuribotas.nick"; // the nick this device asks for on arrival
-// On a reload the new page often arrives before the server sees the old one leave, so the saved nick
-// is still "taken" by ourselves for a moment: ask again quietly, a little later each time.
-const NICK_RETRIES = 3;
 const THROW_MS: Record<ThrowItem, number> = { chinela: 900, vassoura: 1200, colher: 1000, batuque: 2400 }; // match style.css
 const THROW_EMOJI: Record<Exclude<ThrowItem, "colher">, string> = { chinela: "🩴", vassoura: "🧹", batuque: "🥁" };
 
@@ -113,22 +109,6 @@ function WoodenSpoon() {
       <path d="M21 60 q2 10 0 20 M19 88 q-2 8 0 16" stroke="#6e431c" stroke-width="1.2" fill="none" />
     </svg>
   );
-}
-
-function loadNick(): string | null {
-  try {
-    return localStorage.getItem(NICK_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function saveNick(nick: string): void {
-  try {
-    localStorage.setItem(NICK_KEY, nick);
-  } catch {
-    // not saved: the nick still works until the page is closed
-  }
 }
 
 function loadSound(kind: SoundKind): string | null {
@@ -176,6 +156,9 @@ function loadLang(): string | null {
   }
 }
 
+// This device's language: ?lang= (screenshots), then the device's choice, then Portuguese.
+export const startLang = (): Lang => pickLang(new URLSearchParams(location.search).get("lang"), loadLang());
+
 function saveLang(lang: Lang): void {
   try {
     localStorage.setItem(LANG_KEY, lang);
@@ -207,10 +190,12 @@ function saveColours(colours: Record<string, RoomColour>): void {
   }
 }
 
-export function App() {
+// The chat, for someone signed in. `onSignedOut`: this device's session ended (signed out elsewhere,
+// or removed by an @): back to the door.
+export function App({ onSignedOut }: { onSignedOut: () => void }) {
   const [state, dispatch] = useReducer(reduce, initialState, (s) => ({
     ...s,
-    lang: pickLang(new URLSearchParams(location.search).get("lang"), loadLang()),
+    lang: startLang(),
     colours: loadColours(),
   }));
   const [showPeople, setShowPeople] = useState(false);
@@ -218,10 +203,8 @@ export function App() {
   const [shaking, setShaking] = useState<"" | "nudge" | "tornado">("");
   const [editingNote, setEditingNote] = useState(false);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
-  const askedForNick = useRef(false);
   const stateRef = useRef(state); // the latest state, for the socket's event handlers
   stateRef.current = state;
-  const autoNick = useRef<{ nick: string; tries: number } | null>(null); // the saved nick we're asking for
   const socket = useRef<WebSocket | null>(null);
   const w = words(state.lang);
 
@@ -231,7 +214,7 @@ export function App() {
 
   // One WebSocket at a time, reconnected for as long as the page is open: after 1 s, 2, 4, 8… up to 30 s,
   // and straight away when the phone gets its network back or the app comes back to the screen.
-  // It asks for this device's nick as it connects, so the others see "Estraga_Lar chegou".
+  // The session cookie goes along by itself; the nick comes from the account.
   useEffect(() => {
     let closedByUs = false;
     let attempt = 0;
@@ -242,23 +225,30 @@ export function App() {
       const current = socket.current;
       if (current !== null && current.readyState <= WebSocket.OPEN) return; // connecting or open already
       const scheme = location.protocol === "https:" ? "wss" : "ws";
-      const saved = loadNick();
-      const ws = new WebSocket(`${scheme}://${location.host}/ws${saved ? `?nick=${encodeURIComponent(saved)}` : ""}`);
+      const ws = new WebSocket(`${scheme}://${location.host}/ws`);
       socket.current = ws;
       ws.addEventListener("open", () => {
         attempt = 0;
-        askedForNick.current = false; // if the nick was still held by our ghost, ask again quietly
         dispatch({ type: "connection", status: "open", at: now() });
       });
-      ws.addEventListener("close", () => {
+      ws.addEventListener("close", (e) => {
         if (socket.current !== ws) return;
         dispatch({ type: "connection", status: "closed", at: now() });
         if (closedByUs) return;
+        if (e.code === SIGNED_OUT) return onSignedOut();
         const delay = Math.min(30, 2 ** attempt) * 1000;
         attempt += 1;
-        retry = setTimeout(connect, delay);
+        retry = setTimeout(checkThenConnect, delay);
       });
       ws.addEventListener("message", (e) => onMessage(ws, e));
+    };
+
+    // A refused connection looks the same as no network, so ask the server who we are first:
+    // a session that ended means the door; anything else (offline, server restarting) means try again.
+    const checkThenConnect = (): void => {
+      fetch("/api/me", { cache: "no-store" })
+        .then((res) => (res.status === 401 ? onSignedOut() : connect()))
+        .catch(() => connect());
     };
 
     const now_ = (): void => {
@@ -292,20 +282,6 @@ export function App() {
     } catch {
       return;
     }
-    const pending = autoNick.current;
-    if (pending !== null) {
-      if (msg.type === "nick" && msg.nick === pending.nick) autoNick.current = null;
-      const ours = msg.type === "error" && msg.code === "nick_taken" && msg.detail.toLowerCase() === pending.nick.toLowerCase();
-      if (ours && pending.tries <= NICK_RETRIES) {
-        const retry = pending.tries * 1000;
-        pending.tries += 1;
-        setTimeout(() => {
-          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "nick", nick: pending.nick }));
-        }, retry);
-        return; // not an error yet: probably our own old page, still leaving
-      }
-      if (ours) autoNick.current = null; // really taken by someone else: say so (below)
-    }
     const reconnecting = msg.type === "welcome" && stateRef.current.rooms.length > 0;
     dispatch({ type: "server", msg, at: now() });
     if (reconnecting) rejoin(ws);
@@ -320,22 +296,6 @@ export function App() {
   };
 
   useEffect(() => saveColours(state.colours), [state.colours]);
-
-  // A nick sticks to this device: on arrival (still a Kamba-N) ask for the saved one once; if it is
-  // taken right now, the server says so and you stay Kamba-N. Accounts (phase 4) will reserve it.
-  useEffect(() => {
-    if (state.nick === "") return;
-    if (!askedForNick.current) {
-      askedForNick.current = true;
-      const saved = loadNick();
-      if (saved !== null && saved !== state.nick && isGuestNick(state.nick)) {
-        autoNick.current = { nick: saved, tries: 1 };
-        send({ type: "nick", nick: saved });
-      }
-      return;
-    }
-    if (!isGuestNick(state.nick)) saveNick(state.nick);
-  }, [state.nick]);
 
   // Sound needs one touch first (a browser rule); any tap or key press will do.
   useEffect(() => {
