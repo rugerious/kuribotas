@@ -142,6 +142,7 @@ test("devices asking for notifications are kept by endpoint, found by nick (any 
     quiet: false,
     lang: "pt" as const,
     at: "2026-12-24T20:00:00.000Z",
+    session: "s-phone",
   };
   store.savePush(row);
   store.savePush({ ...row, endpoint: "https://fcm.googleapis.com/fcm/send/b", nick: "Mãe", channels: ["#jantar"] });
@@ -200,5 +201,38 @@ test("a device link adds a session to someone who is already in; a session can b
   store.deleteSession("phone");
   assert.equal(store.sessionPerson("phone", at(4)), undefined);
   assert.equal(store.sessionPerson("laptop", at(4))?.nick, "Estraga_Lar");
+  store.close();
+});
+
+test("devices are listed per person; forgetting one ends its session and its notifications", () => {
+  const store = openStore(":memory:");
+  store.createInvite("p", { kind: "person", personId: null, role: "member", createdBy: null, expiresAt: later }, at(0));
+  store.redeem("p", "Kota", "phone", "Android · Chrome", at(1));
+  store.createInvite("d", { kind: "device", personId: 1, role: "member", createdBy: 1, expiresAt: later }, at(2));
+  store.redeem("d", "", "laptop", "Windows · Edge", at(3));
+  const push = { endpoint: "https://fcm.googleapis.com/fcm/send/x", p256dh: "k", auth: "a", nick: "Kota", channels: [], quiet: false, lang: "pt" as const, at: at(4) };
+  store.savePush({ ...push, session: "phone" });
+  const devices = store.sessionsOf(1);
+  assert.deepEqual(devices.map((d) => [d.device, d.hash]), [["Android · Chrome", "phone"], ["Windows · Edge", "laptop"]]);
+  assert.equal(store.deleteSessionById(2, devices[0]?.id ?? 0), undefined); // not someone else's
+  assert.equal(store.deleteSessionById(1, devices[0]?.id ?? 0), "phone");
+  assert.deepEqual(store.pushFor("Kota"), []); // the lost phone stays quiet
+  assert.equal(store.sessionPerson("phone", at(5)), undefined);
+  store.close();
+});
+
+test("an @ can be made, and removing a person takes their sessions, invites and notifications", () => {
+  const store = openStore(":memory:");
+  store.createInvite("p", { kind: "person", personId: null, role: "member", createdBy: null, expiresAt: later }, at(0));
+  store.redeem("p", "Primo", "s", "", at(1));
+  store.setRole(1, "admin");
+  assert.equal(store.personById(1)?.role, "admin");
+  store.createInvite("q", { kind: "person", personId: null, role: "member", createdBy: 1, expiresAt: later }, at(2));
+  store.savePush({ endpoint: "https://fcm.googleapis.com/fcm/send/y", p256dh: "k", auth: "a", nick: "Primo", channels: [], quiet: false, lang: "pt", at: at(3), session: "s" });
+  store.deletePerson(1);
+  assert.equal(store.personByNick("Primo"), undefined);
+  assert.equal(store.sessionPerson("s", at(4)), undefined);
+  assert.equal(store.invite("q"), undefined); // invites they made go too
+  assert.deepEqual(store.pushFor("Primo"), []);
   store.close();
 });

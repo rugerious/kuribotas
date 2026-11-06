@@ -370,6 +370,34 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       }));
     }
 
+    case "role": {
+      // IRC's "*** X gives @ to Y", in every tab where Y is (else the open one).
+      const rooms = state.rooms.filter((r) => hasMember(r, msg.nick));
+      let next = state;
+      for (const room of rooms) {
+        next = updateRoom(next, room.name, (r) => ({
+          ...r,
+          members: r.members.map((m) => (m.nick === msg.nick ? { ...m, role: msg.role } : m)),
+        }));
+        next = addEvent(next, room.name, w.events.role(msg.by, msg.nick, msg.role === "admin"), at, "info");
+      }
+      return rooms.length > 0 ? next : addEvent(next, state.active, w.events.role(msg.by, msg.nick, msg.role === "admin"), at, "info");
+    }
+
+    case "removed": {
+      const rooms = state.rooms.filter((r) => hasMember(r, msg.nick) || r.name === msg.nick);
+      let next = state;
+      for (const room of rooms) {
+        next = updateRoom(next, room.name, (r) => without(r, msg.nick));
+        next = addEvent(next, room.name, w.events.removed(msg.nick, msg.by), at, "info");
+      }
+      return rooms.length > 0 ? next : addEvent(next, state.active, w.events.removed(msg.nick, msg.by), at, "info");
+    }
+
+    case "link":
+    case "devices":
+      return state; // shown by the app, which knows this page's address and the date format
+
     case "error": {
       const say = w.errors[msg.code] as ((detail: string) => string) | undefined;
       return addEvent(state, state.active, say ? say(msg.detail) : msg.reason, at, "error");

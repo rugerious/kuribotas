@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { ApiError, InviteInfo, Me } from "../../shared/protocol.ts";
 import { App, startLang } from "./app.tsx";
-import { inviteToken } from "./invite.ts";
+import { cleanCode, inviteToken } from "./invite.ts";
 import { Peeker } from "./peeker.tsx";
 import { words, type Words } from "./words.ts";
 
@@ -37,6 +37,7 @@ const forgetToken = (): void => history.replaceState(null, "", location.pathname
 export function Gate() {
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const [nick, setNick] = useState("");
+  const [code, setCode] = useState("");
   const w = words(startLang());
 
   useEffect(() => {
@@ -61,6 +62,19 @@ export function Gate() {
   }, []);
 
   if (phase.kind === "in") return <App onSignedOut={() => setPhase({ kind: "door" })} />;
+
+  // A code from /aparelho on another device: looked up like a link, then confirmed like one.
+  const tryCode = (e: Event): void => {
+    e.preventDefault();
+    const token = cleanCode(code);
+    if (token.length !== 8) return setPhase({ kind: "door", error: "invite_unknown" });
+    fetch(`/api/invite/${token}`, { cache: "no-store" })
+      .then(async (res) => {
+        const body: unknown = await res.json();
+        setPhase(res.ok ? { kind: "invite", token, info: body as InviteInfo, busy: false } : { kind: "door", error: errorOf(body) });
+      })
+      .catch(() => setPhase({ kind: "door", error: "offline" }));
+  };
 
   const redeem = (e: Event): void => {
     e.preventDefault();
@@ -100,6 +114,23 @@ export function Gate() {
               </p>
             )}
             <p class="gate-text">{w.gate.doorText}</p>
+            <form class="gate-code" onSubmit={tryCode}>
+              <label class="gate-text" for="gate-code">
+                {w.gate.codeLabel}
+              </label>
+              <input
+                id="gate-code"
+                value={code}
+                onInput={(e) => setCode(e.currentTarget.value)}
+                placeholder="ABCD-EFGH"
+                maxLength={9}
+                autoComplete="one-time-code"
+                autoCapitalize="characters"
+                spellcheck={false}
+                required
+              />
+              <button type="submit">{w.gate.codeButton}</button>
+            </form>
           </>
         )}
         {phase.kind === "invite" && (

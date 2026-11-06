@@ -191,3 +191,16 @@ test("/notificacoes switches notifications on this device", () => {
   assert.deepEqual(parseInput("/notifications on", here, "en"), { kind: "notify", on: true });
   assert.deepEqual(parseInput("/notificacoes", here, "pt"), { kind: "error", text: "Usa assim: /notificacoes sim | nao" });
 });
+
+test("accounts: invites, devices, signing out, @", () => {
+  assert.deepEqual(parseInput("/convite", here, "pt"), { kind: "send", msg: { type: "make_invite" } });
+  assert.deepEqual(parseInput("/device", here, "en"), { kind: "send", msg: { type: "make_device_link" } });
+  assert.deepEqual(parseInput("/aparelhos", here, "pt"), { kind: "send", msg: { type: "devices" } });
+  assert.deepEqual(parseInput("/xau", here, "pt"), { kind: "logout" });
+  assert.deepEqual(parseInput("/xau [3]", here, "pt"), { kind: "send", msg: { type: "forget_device", id: 3 } });
+  assert.deepEqual(parseInput("/logout x", here, "en"), { kind: "error", text: "usage: /logout [number]" });
+  assert.deepEqual(parseInput("/op Kota", here, "pt"), { kind: "send", msg: { type: "role", nick: "Kota", role: "admin" } });
+  assert.deepEqual(parseInput("/deop Kota", here, "pt"), { kind: "send", msg: { type: "role", nick: "Kota", role: "member" } });
+  assert.deepEqual(parseInput("/kick Kota", here, "en"), { kind: "send", msg: { type: "remove", nick: "Kota" } });
+  assert.deepEqual(parseInput("/expulsar", here, "pt"), { kind: "error", text: "Usa assim: /expulsar <nick>" });
+});

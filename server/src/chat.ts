@@ -1,6 +1,7 @@
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import { makeInvite } from "./auth.ts";
 import { isValidSubscription, type PushSend } from "./push.ts";
 import { NICK_PATTERN, type Person, type PushRow, type Role, type Store } from "./store.ts";
 
@@ -364,6 +365,59 @@ export function attachChat(
         syncPush(me);
         return;
       }
+      case "make_invite": {
+        // A link for one new person (7 days, once). Only to the @ who asked: they decide who gets it.
+        if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can invite");
+        const { token, expiresAt } = makeInvite(store, "person", { personId: null, role: "member", createdBy: who.id });
+        send(me, { type: "link", kind: "person", token, expiresAt });
+        return;
+      }
+      case "make_device_link": {
+        // Your phone makes a code for your computer (10 minutes, once). Anyone can, for themselves.
+        const { token, expiresAt } = makeInvite(store, "device", { personId: who.id, role: who.role, createdBy: who.id });
+        send(me, { type: "link", kind: "device", token, expiresAt });
+        return;
+      }
+      case "devices": {
+        sendDevices(me);
+        return;
+      }
+      case "forget_device": {
+        // A lost phone, an old computer: its session ends, its chat closes, its notifications stop.
+        const hash = store.deleteSessionById(who.id, msg.id);
+        if (hash === undefined) return reject(me, "no_such_device", String(msg.id), `no device ${msg.id}`);
+        if (hash !== me.session) sendDevices(me);
+        endSession(hash);
+        return;
+      }
+      case "role": {
+        if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can give or take @");
+        const target = store.personByNick(msg.nick.trim());
+        if (target === undefined) return reject(me, "no_such_person", msg.nick.trim(), `nobody called ${msg.nick.trim()}`);
+        if (target.id === who.id && msg.role === "member") {
+          return reject(me, "cant_deop_self", "", "another @ has to take your @"); // so there's always an @
+        }
+        if (target.role === msg.role) return;
+        store.setRole(target.id, msg.role);
+        const online = people.get(target.id);
+        if (online !== undefined) online.role = msg.role;
+        const changed: ServerMessage = { type: "role", nick: target.nick, role: msg.role, by: me.nick };
+        for (const m of members) send(m, changed);
+        return;
+      }
+      case "remove": {
+        // Out of Kuribotas: account, devices, invites and notifications. Their messages stay in the history.
+        if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can remove someone");
+        const target = store.personByNick(msg.nick.trim());
+        if (target === undefined) return reject(me, "no_such_person", msg.nick.trim(), `nobody called ${msg.nick.trim()}`);
+        if (target.role === "admin") return reject(me, "cant_remove_op", target.nick, `take ${target.nick}'s @ first`);
+        const removed: ServerMessage = { type: "removed", nick: target.nick, by: me.nick };
+        for (const m of members) send(m, removed);
+        store.deletePerson(target.id);
+        for (const m of members) if (m.who.id === target.id) m.ws.close(SIGNED_OUT, "removed");
+        people.delete(target.id);
+        return;
+      }
       case "typing": {
         // Not saved, not logged, and never an error: it is only a hint, so anything odd is dropped.
         if ("to" in msg) {
@@ -472,7 +526,14 @@ export function attachChat(
   function syncPush(me: Member): void {
     if (me.push === undefined) return;
     const channels = [...me.channels].filter((c) => !privates.has(c));
-    store.savePush({ ...me.push, nick: me.nick, channels, quiet: me.status === "busy", at: new Date().toISOString() });
+    store.savePush({
+      ...me.push,
+      nick: me.nick,
+      channels,
+      quiet: me.status === "busy",
+      at: new Date().toISOString(),
+      session: me.session,
+    });
   }
 
   const connected = (nick: string): boolean => [...members].some((m) => m.nick.toLowerCase() === nick.toLowerCase());
@@ -552,6 +613,22 @@ export function attachChat(
     return channels;
   }
 
+  function sendDevices(me: Member): void {
+    const devices = store.sessionsOf(me.who.id).map((s) => ({
+      id: s.id,
+      name: s.device,
+      since: s.createdAt,
+      seen: s.seenAt,
+      current: s.hash === me.session,
+    }));
+    send(me, { type: "devices", devices });
+  }
+
+  // Close the connections of a device whose session ended: the app goes back to the door.
+  function endSession(sessionHash: string): void {
+    for (const m of members) if (m.session === sessionHash) m.ws.close(SIGNED_OUT, "signed out");
+  }
+
   function sendPerson(who: Someone, msg: ServerMessage): void {
     const data = JSON.stringify(msg);
     for (const d of devicesOf(who)) sendRaw(d, data);
@@ -588,9 +665,7 @@ export function attachChat(
   }
 
   return {
-    signOut: (sessionHash) => {
-      for (const m of members) if (m.session === sessionHash) m.ws.close(SIGNED_OUT, "signed out");
-    },
+    signOut: endSession,
     // Say goodbye to every client (1001 = going away), force-close stragglers, then stop.
     close: () =>
       new Promise<void>((resolve) => {
@@ -613,7 +688,7 @@ function visible(m: Member): boolean {
 }
 
 function info(m: Member): MemberInfo {
-  return { nick: m.nick, status: m.status, note: m.note };
+  return { nick: m.nick, status: m.status, note: m.note, role: m.who.role };
 }
 
 function send(member: Member, msg: ServerMessage): void {
@@ -695,6 +770,21 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       if (channel === undefined || item === undefined) return undefined;
       if (item === "batuque") return { type: "throw", channel, item };
       return nick === undefined ? undefined : { type: "throw", channel, item, nick };
+    }
+    case "make_invite":
+    case "make_device_link":
+    case "devices":
+      return { type: v.type };
+    case "forget_device":
+      return typeof v.id === "number" && Number.isInteger(v.id) ? { type: "forget_device", id: v.id } : undefined;
+    case "role": {
+      const nick = str("nick");
+      const role = v.role === "admin" || v.role === "member" ? v.role : undefined;
+      return nick === undefined || role === undefined ? undefined : { type: "role", nick, role };
+    }
+    case "remove": {
+      const nick = str("nick");
+      return nick === undefined ? undefined : { type: "remove", nick };
     }
     case "push": {
       const lang = v.lang === "en" ? "en" : "pt";

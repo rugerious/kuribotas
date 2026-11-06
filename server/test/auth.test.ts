@@ -73,7 +73,7 @@ test("another site's page can't open the chat, even with a real cookie", limits,
 });
 
 test("an invite link: greet, pick a nick, get a session cookie; the link then stops working", limits, async () => {
-  const token = makeInvite(app.store, "person", { personId: null, role: "member", createdBy: null });
+  const { token } = makeInvite(app.store, "person", { personId: null, role: "member", createdBy: null });
   assert.equal(inviteLink("https://kuribotas.example/", "person", token), `https://kuribotas.example/#convite=${token}`);
   assert.deepEqual(await (await fetch(`${origin}/api/invite/${token}`)).json(), { kind: "person" });
 
@@ -105,9 +105,11 @@ test("an invite link: greet, pick a nick, get a session cookie; the link then st
 test("a device link says whose it is and signs that person in on another device", limits, async () => {
   signIn(app.store, "Mais_Velho", "admin");
   const id = app.store.personByNick("Mais_Velho")?.id ?? 0;
-  const token = makeInvite(app.store, "device", { personId: id, role: "member", createdBy: id });
-  assert.deepEqual(await (await fetch(`${origin}/api/invite/${token}`)).json(), { kind: "device", nick: "Mais_Velho" });
-  const res = await post("/api/redeem", { token }, { origin, "user-agent": "Mozilla/5.0 (Linux; Android 15) Chrome/140.0 Mobile" });
+  const { token } = makeInvite(app.store, "device", { personId: id, role: "member", createdBy: id });
+  assert.match(token, /^[2-9A-HJ-NP-Z]{8}$/); // short enough to type on a phone
+  const typed = `${token.slice(0, 4).toLowerCase()}-${token.slice(4)}`; // as someone might type it
+  assert.deepEqual(await (await fetch(`${origin}/api/invite/${typed}`)).json(), { kind: "device", nick: "Mais_Velho" });
+  const res = await post("/api/redeem", { token: typed }, { origin, "user-agent": "Mozilla/5.0 (Linux; Android 15) Chrome/140.0 Mobile" });
   assert.deepEqual(await res.json(), { nick: "Mais_Velho", role: "admin" });
   assert.equal(deviceName("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Version/18.0 Mobile/15E148 Safari/604.1"), "iPhone · Safari");
 });
@@ -200,4 +202,68 @@ test("too many invite attempts from one address are refused for a while", limits
   assert.equal(statuses.slice(0, 20).every((s) => s === 404), true);
   assert.equal(statuses[20], 429);
   await other.close();
+});
+
+test("only an @ makes invite links; anyone makes a code for their own other device", limits, async () => {
+  const op = await as(signIn(app.store, "Chefe", "admin"));
+  const member = await as(signIn(app.store, "Membro"));
+  await op.next((m) => m.type === "joined");
+  await member.next((m) => m.type === "joined");
+  member.send({ type: "make_invite" });
+  assert.equal((await member.next((m) => m.type === "error")).code, "not_op");
+  op.send({ type: "make_invite" });
+  const link = await op.next((m) => m.type === "link");
+  assert.equal(link.kind, "person");
+  assert.deepEqual(await (await fetch(`${origin}/api/invite/${String(link.token)}`)).json(), { kind: "person" });
+  member.send({ type: "make_device_link" });
+  const code = await member.next((m) => m.type === "link");
+  assert.equal(code.kind, "device");
+  assert.deepEqual(await (await fetch(`${origin}/api/invite/${String(code.token)}`)).json(), { kind: "device", nick: "Membro" });
+  op.ws.close();
+  member.ws.close();
+});
+
+test("your devices: listed, this one marked, another one signed out from here", limits, async () => {
+  const phoneCookie = signIn(app.store, "Viajante");
+  const laptop = await as(signIn(app.store, "Viajante"));
+  const phone = await as(phoneCookie);
+  await phone.next((m) => m.type === "joined");
+  await laptop.next((m) => m.type === "joined");
+  laptop.send({ type: "devices" });
+  const list = (await laptop.next((m) => m.type === "devices")).devices as { id: number; current: boolean }[];
+  assert.equal(list.length, 2);
+  assert.deepEqual(list.map((d) => d.current), [false, true]); // oldest first: the phone, then this laptop
+  laptop.send({ type: "forget_device", id: list[0]?.id ?? 0 }); // the "lost" phone
+  assert.equal(await phone.closed, 4401);
+  assert.equal(((await laptop.next((m) => m.type === "devices")).devices as unknown[]).length, 1);
+  assert.equal((await fetch(`${origin}/api/me`, { headers: { cookie: phoneCookie } })).status, 401);
+  laptop.send({ type: "forget_device", id: 99999 });
+  assert.deepEqual((await laptop.next((m) => m.type === "error")).code, "no_such_device");
+  laptop.ws.close();
+});
+
+test("an @ gives @ (shown in the people list), can't drop their own, and removes a member", limits, async () => {
+  const op = await as(signIn(app.store, "Mais_Velho_2", "admin"));
+  const kota = await as(signIn(app.store, "Kota_2"));
+  const kamba = await as(signIn(app.store, "Kamba_2"));
+  for (const c of [op, kota, kamba]) await c.next((m) => m.type === "joined");
+  op.send({ type: "role", nick: "kota_2", role: "admin" });
+  assert.deepEqual(await kamba.next((m) => m.type === "role"), { type: "role", nick: "Kota_2", role: "admin", by: "Mais_Velho_2" });
+  kota.send({ type: "make_invite" }); // now an @, straight away
+  assert.equal((await kota.next((m) => m.type === "link")).kind, "person");
+  op.send({ type: "role", nick: "Mais_Velho_2", role: "member" });
+  assert.equal((await op.next((m) => m.type === "error")).code, "cant_deop_self");
+  op.send({ type: "remove", nick: "Kota_2" });
+  assert.deepEqual([(await op.next((m) => m.type === "error")).code], ["cant_remove_op"]);
+  kamba.send({ type: "remove", nick: "Kota_2" });
+  assert.equal((await kamba.next((m) => m.type === "error")).code, "not_op");
+  op.send({ type: "remove", nick: "Kamba_2" });
+  assert.deepEqual(await kota.next((m) => m.type === "removed"), { type: "removed", nick: "Kamba_2", by: "Mais_Velho_2" });
+  assert.equal(await kamba.closed, 4401);
+  assert.equal(app.store.personByNick("Kamba_2"), undefined);
+  const late = await as(signIn(app.store, "Recém_Chegado"));
+  const joined = await late.next((m) => m.type === "joined");
+  const roles = Object.fromEntries((joined.members as { nick: string; role: string }[]).map((m) => [m.nick, m.role]));
+  assert.equal(roles.Kota_2, "admin");
+  for (const c of [op, kota, late]) c.ws.close();
 });
