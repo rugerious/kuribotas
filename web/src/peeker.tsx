@@ -7,7 +7,9 @@ export function Peeker({ label }: { label?: string }) {
     <g>
       <ellipse cx={cx} cy="250" rx="62" ry="108" fill="#e8e6e1" stroke="#080a0f" stroke-width="12" />
       <ellipse class={`pupil pupil-${side}`} cx={cx + 26} cy="268" rx="20" ry="27" fill="#080a0f" />
+      {/* The lid is painted in the background's colour (style.css .peeker .lid), so it works in both themes. */}
       <path
+        class="lid"
         d={`M ${cx - 66} 238 Q ${cx} 196 ${cx + 66} 238 L ${cx + 66} 140 L ${cx - 66} 140 Z`}
         fill="#080a0f"
         stroke="#080a0f"

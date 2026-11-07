@@ -28,6 +28,7 @@ export type Words = {
     privateChat: (nick: string) => string; // the bar above a private chat
     privateChannel: string; // after the topic of a private channel
     tornado: (nick: string) => string; // the 🌪️ button's label
+    actions: { dm: string; nudge: string; tornado: string }; // short words beside the icons
     editNote: string; // the ✏️ button
     emoji: string; // the 😀 button
     hit: Record<ThrowItem, string>; // the big word when it lands
@@ -74,6 +75,7 @@ export type Words = {
     batuque: (from: string, channel: string) => string;
     tornadoAll: (from: string, channel: string) => string;
     shake: (on: boolean) => string;
+    theme: (theme: "escuro" | "claro" | "auto") => string;
     sound: (name: string, tornado: boolean) => string;
     notify: (on: boolean) => string;
     notifyUnsupported: string;
@@ -98,7 +100,7 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -143,6 +145,7 @@ const pt: Words = {
     privateChat: (nick) => `💬 Conversa privada com ${nick} · não fica guardada`,
     privateChannel: "🔒 privado · não fica guardado",
     tornado: (nick) => `Mandar um tornado a ${nick}`,
+    actions: { dm: "privado", nudge: "abanar", tornado: "tornado" },
     editNote: "Mudar a tua frase",
     emoji: "Emoji da família",
     hit: { chinela: "PÁ!", vassoura: "XÔ!", colher: "TOC!", batuque: "TUM TUM TÁ!" },
@@ -208,6 +211,12 @@ const pt: Words = {
     tornadoAll: (from, ch) => `${from} mandou um TORNADO para o ${ch} inteiro! 🌪️🌪️`,
     shake: (on) =>
       on ? "Abanões ligados neste aparelho 📳" : "Abanões desligados neste aparelho: vês a linha, sem tremer nem som",
+    theme: (t) =>
+      ({
+        escuro: "Tema escuro neste aparelho 🌙",
+        claro: "Tema claro neste aparelho ☀️",
+        auto: "Tema automático: segue o telemóvel (escuro à noite se o telemóvel estiver assim) 🌗",
+      })[t],
     sound: (name, t) => `Som ${t ? "do tornado" : "do abanão"} neste aparelho: ${name} 🔊`,
     notify: (on) =>
       on
@@ -271,7 +280,7 @@ const pt: Words = {
     confirm_delete: (d) => `Essa sala tem ${d === "1" ? "1 mensagem" : `${d} mensagens`}, que se perde${d === "1" ? "" : "m"}. Para apagar mesmo: /apagar #sala sim`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -297,6 +306,7 @@ const pt: Words = {
     "/convite — (@) um link para trazer uma pessoa nova 🎟️ · /op · /deop <nick> — dar ou tirar @ · /expulsar <nick> — tirar alguém do Kuribotas",
     "/principal #sala — (@) sala onde todos entram 🏠 (/principal -#sala para tirar) · /apagar #sala — (@) apagar uma sala",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
+    "/tema escuro | claro | auto — o aspecto deste aparelho (auto segue o telemóvel)",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
   ],
@@ -332,6 +342,7 @@ const en: Words = {
     privateChat: (nick) => `💬 Private chat with ${nick} · not saved`,
     privateChannel: "🔒 private · not saved",
     tornado: (nick) => `Send ${nick} a tornado`,
+    actions: { dm: "private", nudge: "nudge", tornado: "tornado" },
     editNote: "Change your note",
     emoji: "Family emoji",
     hit: { chinela: "SMACK!", vassoura: "SHOO!", colher: "BONK!", batuque: "BOOM BOOM TAK!" },
@@ -396,6 +407,12 @@ const en: Words = {
     batuque: (from, ch) => `${from} started a drum session in ${ch}! 🥁🥁🥁`,
     tornadoAll: (from, ch) => `${from} sent a TORNADO to everyone in ${ch}! 🌪️🌪️`,
     shake: (on) => (on ? "Nudges on for this device 📳" : "Nudges off for this device: you'll see the line, no shaking or sound"),
+    theme: (t) =>
+      ({
+        escuro: "Dark theme on this device 🌙",
+        claro: "Light theme on this device ☀️",
+        auto: "Automatic theme: follows your phone's light or dark setting 🌗",
+      })[t],
     sound: (name, t) => `${t ? "Tornado" : "Nudge"} sound on this device: ${name} 🔊`,
     notify: (on) =>
       on
@@ -459,7 +476,7 @@ const en: Words = {
     confirm_delete: (d) => `that room has ${d === "1" ? "1 message" : `${d} messages`}, which will be lost. To delete it anyway: /delete #room yes`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -485,6 +502,7 @@ const en: Words = {
     "/invitelink — (@) a link to bring in a new person 🎟️ · /op · /deop <nick> — give or take @ · /kick <nick> — remove someone from Kuribotas",
     "/home #room — (@) a room everyone joins 🏠 (/home -#room to take it off) · /delete #room — (@) delete a room",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
+    "/theme dark | light | auto — this device's look (auto follows the phone)",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",
   ],

@@ -27,6 +27,8 @@ import {
 import { FAMILY_EMOJI } from "./emoji.ts";
 import { showCode } from "./invite.ts";
 import { Peeker } from "./peeker.tsx";
+import { Puzzle } from "./puzzle.tsx";
+import { applyTheme, saveTheme } from "./theme.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
@@ -484,6 +486,10 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         playNudge(parsed.tornado); // hear it straight away
         return say(w.events.sound(parsed.name, parsed.tornado));
       }
+      case "theme":
+        saveTheme(parsed.theme);
+        applyTheme(parsed.theme);
+        return dispatch({ type: "local", text: w.events.theme(parsed.theme), tone: "info", at: now() });
       case "lang":
         saveLang(parsed.lang);
         return dispatch({ type: "lang", lang: parsed.lang, at: now() });
@@ -514,8 +520,12 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
       )}
       <header class="bar">
+        {/* The corner symbol: the puzzle on a computer, the peeker on a phone (style.css picks by width). */}
         <h1 class="brand">
-          KURI<span>BOTAS</span>
+          <Puzzle class="brand-wide" />
+          <span class="brand-phone">
+            <Peeker label="Kuribotas" />
+          </span>
         </h1>
         {!online && (
           <span class={`conn conn-${state.connection}`}>
@@ -728,8 +738,11 @@ function PersonRow({
   onDm: (nick: string) => void;
   w: Words;
 }) {
-  return (
-    <li class="person">
+  // Tap a name to see what you can do with that person: the list stays calm instead of showing
+  // three buttons under everyone (and a tornado isn't one stray tap away).
+  const [open, setOpen] = useState(false);
+  const who = (
+    <>
       <span class="person-line">
         {member.status === "invisible" ? <Peeker /> : <span class={`dot st-${member.status}`} aria-hidden="true" />}
         <span class={`person-nick ${nickClass(member.nick)}`} title={member.nick}>
@@ -742,8 +755,19 @@ function PersonRow({
         <span class={`status-word word-${member.status}`}>{w.status[member.status]}</span>
         {member.note && ` · ${member.note}`}
       </span>
+    </>
+  );
+  return (
+    <li class={`person${open ? " open" : ""}`}>
+      {isMe ? (
+        <div class="person-who">{who}</div>
+      ) : (
+        <button type="button" class="person-who" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {who}
+        </button>
+      )}
       {/* On their own line, so a long nick never pushes them out of the panel. */}
-      {!isMe && (
+      {!isMe && open && (
         <span class="person-actions">
           <button
             type="button"
@@ -752,7 +776,7 @@ function PersonRow({
             title={w.ui.dm(member.nick)}
             onClick={() => onDm(member.nick)}
           >
-            💬
+            <span aria-hidden="true">💬</span> {w.ui.actions.dm}
           </button>
           <button
             type="button"
@@ -762,7 +786,7 @@ function PersonRow({
             disabled={!canNudge}
             onClick={() => onNudge(member.nick, false)}
           >
-            📳
+            <span aria-hidden="true">📳</span> {w.ui.actions.nudge}
           </button>
           <button
             type="button"
@@ -772,7 +796,7 @@ function PersonRow({
             disabled={!canNudge}
             onClick={() => onNudge(member.nick, true)}
           >
-            🌪️
+            <span aria-hidden="true">🌪️</span> {w.ui.actions.tornado}
           </button>
         </span>
       )}
