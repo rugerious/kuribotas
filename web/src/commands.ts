@@ -163,7 +163,8 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
     case "/convite":
       return send({ type: "make_invite" });
     case "/aparelho":
-      return send({ type: "make_device_link" });
+      // "/aparelho" = a code for your own other device; "/aparelho Kota" = (an @) a code for Kota.
+      return send(firstWord ? { type: "make_device_link", nick: firstWord } : { type: "make_device_link" });
     case "/aparelhos":
       return send({ type: "devices" });
     case "/xau": {

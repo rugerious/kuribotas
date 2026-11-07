@@ -86,7 +86,7 @@ export type ClientMessage =
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
   | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" }
   | { type: "make_invite" } // an @ makes an invite link for a new person (/convite)
-  | { type: "make_device_link" } // a link and code to add another device of yours (/aparelho)
+  | { type: "make_device_link"; nick?: string } // a link and code to add another device: yours, or (an @ only) someone else's (/aparelho [nick])
   | { type: "devices" } // list your devices (/aparelhos)
   | { type: "forget_device"; id: number } // sign one of your devices out (/xau 2)
   | { type: "role"; nick: string; role: Role } // an @ gives or takes @ (/op, /deop)
@@ -136,7 +136,7 @@ export type ServerMessage =
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
   // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").
-  | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string }
+  | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string; for?: string } // for = whose device code an @ made
   | { type: "devices"; devices: Device[] } // only to you
   | { type: "role"; nick: string; role: Role; by: string } // to everyone: someone got or lost @
   | { type: "removed"; nick: string; by: string } // to everyone: an @ removed someone

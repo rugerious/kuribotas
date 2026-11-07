@@ -226,6 +226,24 @@ test("only an @ makes invite links; anyone makes a code for their own other devi
   member.ws.close();
 });
 
+test("an @ makes a code for someone who lost their sign-in; nobody else can", limits, async () => {
+  const op = await as(signIn(app.store, "Ajudante", "admin"));
+  const member = await as(signIn(app.store, "Perdido"));
+  await op.next((m) => m.type === "joined");
+  await member.next((m) => m.type === "joined");
+  member.send({ type: "make_device_link", nick: "Ajudante" });
+  assert.equal((await member.next((m) => m.type === "error")).code, "not_op");
+  op.send({ type: "make_device_link", nick: "ninguem_assim" });
+  assert.equal((await op.next((m) => m.type === "error")).code, "no_such_person");
+  op.send({ type: "make_device_link", nick: "perdido" }); // any case
+  const code = await op.next((m) => m.type === "link");
+  assert.equal(code.kind, "device");
+  assert.equal(code.for, "Perdido");
+  assert.deepEqual(await (await fetch(`${origin}/api/invite/${String(code.token)}`)).json(), { kind: "device", nick: "Perdido" });
+  op.ws.close();
+  member.ws.close();
+});
+
 test("your devices: listed, this one marked, another one signed out from here", limits, async () => {
   const phoneCookie = signIn(app.store, "Viajante");
   const laptop = await as(signIn(app.store, "Viajante"));

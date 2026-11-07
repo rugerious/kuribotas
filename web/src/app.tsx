@@ -287,7 +287,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     } catch {
       return;
     }
-    if (msg.type === "link") return showLink(msg.kind, msg.token);
+    if (msg.type === "link") return showLink(msg.kind, msg.token, msg.for);
     if (msg.type === "devices") return showDevices(msg.devices);
     if (msg.type === "rooms") {
       const t = words(stateRef.current.lang).events;
@@ -310,11 +310,16 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
 
   // An invite or device link: shown only on this screen (never sent to the channel), and copied so it
   // can go straight into WhatsApp. The token sits after "#", so it never reaches any server log.
-  const showLink = (kind: "person" | "device", token: string): void => {
+  const showLink = (kind: "person" | "device", token: string, forNick?: string): void => {
     const link = `${location.origin}/#${kind === "person" ? "convite" : "aparelho"}=${token}`;
     const say = (copied: boolean): void => {
       const t = words(stateRef.current.lang).events;
-      const text = kind === "person" ? t.inviteLink(link, copied) : t.deviceLink(link, showCode(token), copied);
+      const text =
+        kind === "person"
+          ? t.inviteLink(link, copied)
+          : forNick !== undefined
+            ? t.deviceLinkFor(forNick, link, showCode(token), copied)
+            : t.deviceLink(link, showCode(token), copied);
       dispatch({ type: "local", text, tone: "info", at: now() });
     };
     if (navigator.clipboard === undefined) return say(false);

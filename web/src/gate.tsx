@@ -162,6 +162,7 @@ export function Gate() {
                 {w.gate.errors[phase.error]}
               </p>
             )}
+            <p class="gate-hint">{w.gate.openHint}</p>
             <button type="submit" disabled={phase.busy}>
               {w.gate.enter}
             </button>
