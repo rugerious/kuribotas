@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–4 done (foundations, basic chat, web client, the Messenger side, the phone, invites and security) · 🚧 **Phase 5 — deploy**: live on AWS behind a Cloudflare Tunnel (image, compose and Terraform done; next: backups and a load test). Target: in use by the family for Christmas 2026.
+> Status: ✅ Phases 0–5 done: **live on AWS** behind a Cloudflare Tunnel, with nightly backups, a backup alarm and a load test behind it, and the family already chatting. Now: polish after launch (the redesign, quieter chat, help inside the app). Target: the whole family on it for Christmas 2026.
 
 ## What it is
 
@@ -34,11 +34,11 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 | 2 | Messenger side: statuses, private chats, nudge and tornado, typing, family sounds, the arsenal (chinela, vassoura, Maria das Dores, batuque), emoji bar | 6–9 | ✅ (~7 h) |
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ✅ (~3 h 30) |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ✅ (~1 h 20) |
-| 4b | Fun after accounts: stickers (family packs + our catchphrase pack), `/roll`, `/8ball`, December `/neve`; saved history for private chats | 2–4 | ⏳ |
-| 5 | Deploy: AWS EC2 t4g.nano (Terraform) + Cloudflare Tunnel, no inbound ports; backups, load test | 4–7 | 🚧 |
+| 5 | Deploy: AWS EC2 t4g.nano (Terraform) + Cloudflare Tunnel, no inbound ports; nightly backups + alarm, load test | 4–7 | ✅ (~5 h) |
+| 4b | After launch, optional: stickers (family packs + our catchphrase pack), `/roll`, `/8ball`, December `/neve`; saved history for private chats | 2–4 | ⏳ |
 | 6 | Write-up | 2–3 | ⏳ |
 
-MVP: 28–42 h.
+MVP: 28–42 h. 4b was planned right after accounts and moved after launch on purpose: a live app for the family came first.
 
 ## What is built so far
 
@@ -183,7 +183,7 @@ Phone (PWA) ──HTTPS/WSS──▶ Cloudflare ◀──outbound tunnel── A
 
 ## Running it on AWS
 
-`infra/server` builds the whole server with Terraform: its own small VPC, an **EC2 t4g.nano** (Graviton, Amazon Linux 2023) with an encrypted disk, IMDSv2 only and termination protection, a security group with **no inbound rule at all**, an IAM role limited to SSM and the `/kuribotas/*` parameters, and a monthly budget alert. On first boot the instance installs Docker and Compose (pinned, hash-checked) and runs `deploy.sh`: settings from SSM Parameter Store into a `0600` `.env`, `deploy/compose.yaml` from the same commit as the image, then the app and the Cloudflare Tunnel start. The family reaches it through the tunnel; admins through SSM Session Manager (no SSH, no keys). Every night it backs up the database (SQLite's own consistent copy, integrity-checked), the notification keys and the family's sounds to a private, encrypted S3 bucket that the server can only **add** to (35 days kept). The state lives in a versioned, encrypted S3 bucket with S3's own locking. Details and the parameters: [infra/README.md](infra/README.md).
+`infra/server` builds the whole server with Terraform: its own small VPC, an **EC2 t4g.nano** (Graviton, Amazon Linux 2023) with an encrypted disk, IMDSv2 only and termination protection, a security group with **no inbound rule at all**, an IAM role limited to SSM and the `/kuribotas/*` parameters, and a monthly budget alert. On first boot the instance installs Docker and Compose (pinned, hash-checked) and runs `deploy.sh`: settings from SSM Parameter Store into a `0600` `.env`, `deploy/compose.yaml` from the same commit as the image, then the app and the Cloudflare Tunnel start. The family reaches it through the tunnel; admins through SSM Session Manager (no SSH, no keys). Every night it backs up the database (SQLite's own consistent copy, integrity-checked), the notification keys and the family's sounds to a private, encrypted S3 bucket that the server can only **add** to (35 days kept), and tells CloudWatch it did: 26 hours without that sign (a failed backup, or the server off) emails an alert. A load test on the real t4g.nano, against a throwaway copy of the app, delivered every message to 150 people chatting at 29 messages a second in 3 ms (p99 7 ms) with 37 MB of memory: far above what a family needs, so the smallest instance stays. The state lives in a versioned, encrypted S3 bucket with S3's own locking. Details and the parameters: [infra/README.md](infra/README.md).
 
 ## Rules this project follows
 
