@@ -29,7 +29,8 @@ import { FAMILY_EMOJI } from "./emoji.ts";
 import { showCode } from "./invite.ts";
 import { Peeker } from "./peeker.tsx";
 import { Puzzle } from "./puzzle.tsx";
-import { applyTheme, saveTheme } from "./theme.ts";
+import { Settings } from "./settings.tsx";
+import { applyTheme, loadTheme, saveTheme, type Theme } from "./theme.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
 const now = (): string => new Date().toISOString();
@@ -227,7 +228,11 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
   const [shakeOn, setShakeOn] = useState(loadShake);
   const [shaking, setShaking] = useState<"" | "nudge" | "tornado">("");
   const [editingNote, setEditingNote] = useState(false);
-  const [showTips, setShowTips] = useState(false); // the Dicas tab is open (it's not a channel)
+  const [panel, setPanel] = useState<"" | "tips" | "settings">(""); // Dicas or ⚙️ open instead of a channel
+  const showTips = panel !== "";
+  const [menuOpen, setMenuOpen] = useState(false); // the ⚙️ tab folded out into Dicas + Definições
+  const setShowTips = (open: boolean): void => setPanel(open ? "tips" : "");
+  const [theme, setThemeNow] = useState<Theme>(loadTheme); // for the ⚙️ buttons (applied in main.tsx)
   const [prefill, setPrefill] = useState<{ text: string; key: number } | null>(null);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
   const askedDm = useRef(new Set<string>()); // private chats whose saved messages were asked for
@@ -533,6 +538,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       case "theme":
         saveTheme(parsed.theme);
         applyTheme(parsed.theme);
+        setThemeNow(parsed.theme);
         return dispatch({ type: "local", text: w.events.theme(parsed.theme), tone: "info", at: now() });
       case "lang":
         saveLang(parsed.lang);
@@ -625,14 +631,41 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       )}
 
       <nav class="tabs" aria-label="Canais / Channels">
+        {/* First tab: ⚙️ folded. Tap › and it opens into Dicas and Definições; tap ‹ to fold it again. */}
         <button
           type="button"
-          class={`tab tab-tips${showTips ? " active" : ""}`}
-          aria-current={showTips ? "page" : undefined}
-          onClick={() => setShowTips(true)}
+          class={`tab tab-menu${menuOpen ? " open" : ""}`}
+          aria-expanded={menuOpen}
+          aria-controls="menu-tabs"
+          aria-label={w.settings.menu}
+          title={w.settings.menu}
+          onClick={() => {
+            if (menuOpen) setPanel("");
+            setMenuOpen(!menuOpen);
+          }}
         >
-          {w.ui.tipsTab}
+          {w.settings.tab}<span aria-hidden="true">{menuOpen ? "‹" : "›"}</span>
         </button>
+        {menuOpen && (
+          <span id="menu-tabs" class="menu-tabs">
+            <button
+              type="button"
+              class={`tab tab-tips${panel === "tips" ? " active" : ""}`}
+              aria-current={panel === "tips" ? "page" : undefined}
+              onClick={() => setPanel("tips")}
+            >
+              {w.ui.tipsTab}
+            </button>
+            <button
+              type="button"
+              class={`tab tab-tips${panel === "settings" ? " active" : ""}`}
+              aria-current={panel === "settings" ? "page" : undefined}
+              onClick={() => setPanel("settings")}
+            >
+              {w.settings.title}
+            </button>
+          </span>
+        )}
         {state.rooms.map((r) => (
           <button
             key={r.name}
@@ -650,7 +683,26 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         ))}
       </nav>
 
-      {showTips && (
+      {panel === "settings" && (
+        <Settings
+          w={w}
+          run={submit}
+          listen={(tornado) => playNudge(tornado)}
+          now={{
+            theme,
+            quietJoins: state.quietJoins,
+            shakeOn,
+            nudgeSound: loadSound("nudge") ?? DEFAULT_SOUND,
+            tornadoSound: loadSound("tornado") ?? DEFAULT_SOUND,
+            nudgeSounds: availableSounds("nudge"),
+            tornadoSounds: availableSounds("tornado"),
+            push: pushSupported() ? pushWanted() : "unsupported",
+            lang: state.lang,
+          }}
+        />
+      )}
+
+      {panel === "tips" && (
         <Tips
           w={w}
           onTry={(cmd) => {

@@ -112,6 +112,32 @@ export type Words = {
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
   help: readonly string[];
+  settings: {
+    tab: string; // the first tab's icon
+    menu: string; // its name for screen readers: what it opens
+    title: string;
+    intro: string;
+    theme: string;
+    themeHint: string;
+    dark: string;
+    light: string;
+    auto: string;
+    joins: string;
+    joinsHint: string;
+    show: string;
+    hide: string;
+    shake: string;
+    shakeHint: string;
+    on: string;
+    off: string;
+    nudgeSound: string;
+    tornadoSound: string;
+    listen: string;
+    notify: string;
+    notifyHint: string;
+    notifyUnsupported: string;
+    lang: string;
+  };
   // The Dicas tab: practical help, a section at a time. A tip with `cmd` puts it in the box when tapped.
   tips: readonly { title: string; items: readonly { text: string; cmd?: string }[] }[];
 };
@@ -305,6 +331,32 @@ const pt: Words = {
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
+  settings: {
+    tab: "⚙️",
+    menu: "Dicas e definições",
+    title: "Definições",
+    intro: "Escolhas deste aparelho. Cada botão faz o mesmo que o comando, e o chat confirma.",
+    theme: "Aspecto",
+    themeHint: "Auto segue o telemóvel: escuro à noite se ele estiver assim",
+    dark: "Escuro",
+    light: "Claro",
+    auto: "Auto",
+    joins: "Quem chega e sai",
+    joinsHint: "Escondidas, a lista de Kambas continua certa",
+    show: "Mostrar",
+    hide: "Esconder",
+    shake: "Abanões",
+    shakeHint: "Desligados: vês a linha, sem tremer nem som",
+    on: "Ligados",
+    off: "Desligados",
+    nudgeSound: "Som do abanão",
+    tornadoSound: "Som do tornado",
+    listen: "Ouvir",
+    notify: "Notificações",
+    notifyHint: "Quando te chamam pelo nick ou te abanam, com a app fechada",
+    notifyUnsupported: "Este navegador não as tem. No iPhone, instala a app primeiro (Partilhar → Adicionar ao ecrã principal).",
+    lang: "Língua",
+  },
   tips: [
     {
       title: "Conversar",
@@ -572,6 +624,32 @@ const en: Words = {
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
+  settings: {
+    tab: "⚙️",
+    menu: "Tips and settings",
+    title: "Settings",
+    intro: "This device's choices. Each button does what its command does, and the chat confirms it.",
+    theme: "Look",
+    themeHint: "Auto follows your phone's light or dark setting",
+    dark: "Dark",
+    light: "Light",
+    auto: "Auto",
+    joins: "Arrived and left lines",
+    joinsHint: "Hidden, the people list still stays right",
+    show: "Show",
+    hide: "Hide",
+    shake: "Nudges",
+    shakeHint: "Off: you see the line, no shaking or sound",
+    on: "On",
+    off: "Off",
+    nudgeSound: "Nudge sound",
+    tornadoSound: "Tornado sound",
+    listen: "Listen",
+    notify: "Notifications",
+    notifyHint: "When someone calls your nick or nudges you, with the app closed",
+    notifyUnsupported: "This browser doesn't have them. On iPhone, install the app first (Share → Add to Home Screen).",
+    lang: "Language",
+  },
   tips: [
     {
       title: "Chatting",
