@@ -282,7 +282,8 @@ test("a nudge for everyone shakes everyone but the sender", () => {
   assert.equal(mine.nudged, null); // I sent it: no shake for me
 });
 
-const dm = (from: string, to: string, text: string): ServerMessage => ({ type: "dm", from, to, kind: "say", text, at });
+let dmId = 0;
+const dm = (from: string, to: string, text: string): ServerMessage => ({ type: "dm", id: ++dmId, from, to, kind: "say", text, at });
 
 test("a DM opens a tab named after the other person; mine opens it and focuses it", () => {
   const s = apply(arrived(), dm("Pai", "Guest-1", "vem jantar"));
@@ -421,4 +422,22 @@ test("my status is said once: the same status coming back (a reconnection) adds 
   const once = apply(arrived(), busy);
   const twice = apply(once, busy);
   assert.equal(twice.rooms[0]?.lines.length, once.rooms[0]?.lines.length);
+});
+
+test("saved private messages go first in the tab, shown once; recent chats reopen on arrival", () => {
+  const welcome: ServerMessage = { type: "welcome", nick: "Guest-1", role: "member", channels: [], dms: ["Pai"] };
+  const back = reduce(initialState, { type: "server", msg: welcome, at });
+  assert.deepEqual(back.rooms.map((r) => r.name), ["Pai"]);
+  const live = apply(arrived(), { type: "dm", id: 7, from: "Pai", to: "Guest-1", kind: "say", text: "já jantaste?", at });
+  const typed = reduce(live, { type: "openDm", nick: "pai" }); // same tab, any case
+  const s = apply(typed, {
+    type: "dm_history",
+    with: "Pai",
+    messages: [
+      { id: 5, from: "Guest-1", to: "Pai", kind: "say", text: "cheguei", at },
+      { id: 7, from: "Pai", to: "Guest-1", kind: "say", text: "já jantaste?", at },
+    ],
+  });
+  const room = s.rooms.find((r) => r.name === "Pai");
+  assert.deepEqual(texts(room?.lines ?? []), ["<Guest-1> cheguei", "<Pai> já jantaste?"]);
 });

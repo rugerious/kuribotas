@@ -230,6 +230,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
   const [showTips, setShowTips] = useState(false); // the Dicas tab is open (it's not a channel)
   const [prefill, setPrefill] = useState<{ text: string; key: number } | null>(null);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
+  const askedDm = useRef(new Set<string>()); // private chats whose saved messages were asked for
   const stateRef = useRef(state); // the latest state, for the socket's event handlers
   stateRef.current = state;
   const socket = useRef<WebSocket | null>(null);
@@ -317,6 +318,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       for (const text of lines) dispatch({ type: "local", text, tone: "info", at: now() });
       return;
     }
+    if (msg.type === "welcome") askedDm.current.clear(); // a new connection: ask again for every private chat
     const reconnecting = msg.type === "welcome" && stateRef.current.rooms.length > 0;
     dispatch({ type: "server", msg, at: now() });
     if (reconnecting) rejoin(ws);
@@ -436,6 +438,18 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     const ws = socket.current;
     if (ws !== null && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   };
+
+  // Every private chat tab gets its saved messages (3 days) once per connection: one opened with 💬
+  // or /msg, one that a message opened, and the ones reopened on arrival.
+  const dmTabs = state.rooms.filter((r) => isDm(r.name)).map((r) => r.name);
+  useEffect(() => {
+    if (state.connection !== "open") return;
+    for (const nick of dmTabs) {
+      if (askedDm.current.has(nick.toLowerCase())) continue;
+      askedDm.current.add(nick.toLowerCase());
+      send({ type: "dm_history", with: nick });
+    }
+  }, [dmTabs.join("\n"), state.connection]);
 
   // A status without your own words gets a random caption from words.ts.
   const setStatus = (status: Status, note?: string): void =>

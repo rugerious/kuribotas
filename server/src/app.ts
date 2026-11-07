@@ -22,9 +22,11 @@ export type AppOptions = {
   secureCookies?: boolean;
   // Channel messages older than this are deleted (on start, then once a day). 0 = keep everything.
   historyDays?: number;
+  privateDays?: number; // private rooms' messages and direct messages (default 3)
 };
 
 const HISTORY_DAYS = 90; // the family's choice: the gossip doesn't stay around for long
+const PRIVATE_DAYS = 3; // and what is said in private goes sooner
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type App = {
@@ -79,19 +81,22 @@ export function createApp(options: AppOptions): App {
   });
   signOut = chat.signOut;
 
-  // Old gossip goes: once now (a server that was off for a while catches up), then every day.
+  // Old gossip goes: once now (a server that was off for a while catches up), then every hour.
   const historyDays = options.historyDays ?? HISTORY_DAYS;
+  const privateDays = options.privateDays ?? PRIVATE_DAYS;
   const forgetOld = (): void => {
     if (historyDays <= 0) return;
     try {
       const gone = store.deleteMessagesBefore(new Date(Date.now() - historyDays * DAY_MS).toISOString());
       if (gone > 0) console.log(`history: deleted ${gone} messages older than ${historyDays} days`);
+      const quiet = privateDays > 0 ? store.deletePrivateBefore(new Date(Date.now() - privateDays * DAY_MS).toISOString()) : 0;
+      if (quiet > 0) console.log(`history: deleted ${quiet} private messages older than ${privateDays} days`);
     } catch (err) {
       console.error(`history: could not delete old messages: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
   forgetOld();
-  const daily = setInterval(forgetOld, DAY_MS);
+  const daily = setInterval(forgetOld, DAY_MS / 24); // hourly: 3 days in private means 3 days, not 4
   daily.unref();
 
   return {

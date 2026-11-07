@@ -12,6 +12,9 @@ export type StoredMessage = {
 };
 export type NewMessage = Omit<StoredMessage, "id">;
 
+// A private message between two people (kept 3 days, like the private rooms' messages).
+export type DirectMessage = { id: number; from: string; to: string; kind: MessageKind; text: string; at: string };
+
 // A device that asked for notifications (Web Push). Until accounts (phase 4) it belongs to a nick,
 // and only for public things: mentions in public channels and nudges. `quiet` = No biolo.
 export type PushRow = {
@@ -72,6 +75,10 @@ export type Store = {
   addMessage: (msg: NewMessage) => StoredMessage;
   recentMessages: (channel: string, limit: number) => StoredMessage[];
   deleteMessagesBefore: (at: string) => number; // how many went
+  deletePrivateBefore: (at: string) => number; // private rooms' messages and direct messages older than `at`
+  addDirect: (fromId: number, toId: number, kind: MessageKind, text: string, at: string) => DirectMessage;
+  directBetween: (aId: number, bId: number, limit: number) => DirectMessage[]; // oldest first
+  directPartners: (personId: number, since: string, limit: number) => string[]; // nicks, most recent first
   savePush: (row: PushRow) => void; // insert or replace, by endpoint
   deletePush: (endpoint: string) => void;
   pushFor: (nick: string) => PushRow[]; // any case
@@ -191,6 +198,20 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (person_id, channel_id)
   );
   `,
+  `
+  -- v7: private messages are kept (3 days): the private rooms' messages go in messages like any
+  -- channel's, and messages between two people go here, by person (so a new nick keeps the thread).
+  CREATE TABLE direct_messages (
+    id         INTEGER PRIMARY KEY,
+    from_id    INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+    to_id      INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL CHECK (kind IN ('say', 'me')),
+    text       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX direct_by_pair ON direct_messages (min(from_id, to_id), max(from_id, to_id), id);
+  CREATE INDEX direct_by_time ON direct_messages (created_at);
+  `,
 ];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
@@ -260,6 +281,26 @@ export function openStore(path: string): Store {
   `);
 
   const removeOldMessages = db.prepare("DELETE FROM messages WHERE created_at < :at");
+  const removeOldPrivate = db.prepare(
+    "DELETE FROM messages WHERE created_at < :at AND channel_id IN (SELECT id FROM channels WHERE private = 1)",
+  );
+  const removeOldDirect = db.prepare("DELETE FROM direct_messages WHERE created_at < :at");
+  const insertDirect = db.prepare(`
+    INSERT INTO direct_messages (from_id, to_id, kind, text, created_at) VALUES (:from, :to, :kind, :text, :at)
+    RETURNING id
+  `);
+  const selectDirect = db.prepare(`
+    SELECT d.id, f.nick AS sender, t.nick AS receiver, d.kind, d.text, d.created_at
+    FROM direct_messages d JOIN people f ON f.id = d.from_id JOIN people t ON t.id = d.to_id
+    WHERE min(d.from_id, d.to_id) = min(:a, :b) AND max(d.from_id, d.to_id) = max(:a, :b)
+    ORDER BY d.id DESC LIMIT :limit
+  `);
+  const selectPartners = db.prepare(`
+    SELECT p.nick, max(d.id) AS last
+    FROM direct_messages d JOIN people p ON p.id = CASE WHEN d.from_id = :me THEN d.to_id ELSE d.from_id END
+    WHERE (d.from_id = :me OR d.to_id = :me) AND d.created_at >= :since AND d.from_id <> d.to_id
+    GROUP BY p.id ORDER BY last DESC LIMIT :limit
+  `);
 
   const upsertPush = db.prepare(`
     INSERT INTO push_subscriptions (endpoint, p256dh, auth, nick, channels, quiet, lang, updated_at, session_hash)
@@ -389,6 +430,27 @@ export function openStore(path: string): Store {
         .map((row) => toMessage(row))
         .reverse(), // oldest first, ready to display
     deleteMessagesBefore: (at) => Number(removeOldMessages.run({ at }).changes),
+    deletePrivateBefore: (at) => Number(removeOldPrivate.run({ at }).changes) + Number(removeOldDirect.run({ at }).changes),
+    addDirect: (fromId, toId, kind, text, at) => {
+      const row = insertDirect.get({ from: fromId, to: toId, kind, text, at });
+      const from = selectPersonById.get({ id: fromId });
+      const to = selectPersonById.get({ id: toId });
+      if (row === undefined || from === undefined || to === undefined) throw new Error("unknown person");
+      return { id: Number(row.id), from: String(from.nick), to: String(to.nick), kind, text, at };
+    },
+    directBetween: (a, b, limit) =>
+      selectDirect
+        .all({ a, b, limit })
+        .map((r) => ({
+          id: Number(r.id),
+          from: String(r.sender),
+          to: String(r.receiver),
+          kind: r.kind === "me" ? ("me" as const) : ("say" as const),
+          text: String(r.text),
+          at: String(r.created_at),
+        }))
+        .reverse(),
+    directPartners: (me, since, limit) => selectPartners.all({ me, since, limit }).map((r) => String(r.nick)),
     savePush: (row) => {
       upsertPush.run({ ...row, channels: JSON.stringify(row.channels), quiet: row.quiet ? 1 : 0 });
     },

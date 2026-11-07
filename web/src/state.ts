@@ -58,7 +58,7 @@ export type Action =
   | { type: "local"; text: string; tone: "info" | "error"; at: string }
   | { type: "focus"; channel: string }
   | { type: "openDm"; nick: string } // open (or go to) a private chat tab
-  | { type: "closeDm"; nick: string } // close a private chat tab (it isn't saved anywhere)
+  | { type: "closeDm"; nick: string } // close a private chat tab (its messages stay saved on the server, 3 days)
   | { type: "colour"; channel: string; colour?: RoomColour; at: string } // no colour = the next one
   | { type: "lang"; lang: Lang; at: string }
   | { type: "tick"; at: string } // every second: "is typing" runs out
@@ -173,11 +173,13 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
   });
   switch (msg.type) {
     case "welcome": {
-      const next: State = { ...state, nick: msg.nick, known: msg.channels };
+      // Private chats with recent messages come back as tabs (the app asks for their messages).
+      let next: State = { ...state, nick: msg.nick, known: msg.channels };
+      for (const nick of msg.dms ?? []) if (!next.rooms.some((r) => r.name.toLowerCase() === nick.toLowerCase())) next = withDm(next, nick);
       if (state.rooms.length === 0) return next;
       // Back after a dropped connection: the server reopens this person's rooms (private ones too),
       // so every tab stays where it was.
-      const rooms = state.rooms.map((r) => ({ ...r, typing: [] }));
+      const rooms = next.rooms.map((r) => ({ ...r, typing: [] }));
       const active = rooms.some((r) => r.name === state.active) ? state.active : (rooms[0]?.name ?? HOME_CHANNEL);
       return { ...next, rooms, active };
     }
@@ -213,7 +215,8 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       let next: State = {
         ...state,
         seq,
-        rooms: [...state.rooms.filter((r) => r.name !== msg.channel), room],
+        // Channels before private chats, so the tabs read #mujimbo #angola … then 💬 Kota.
+        rooms: [...state.rooms.filter((r) => r.name !== msg.channel && !isDm(r.name)), room, ...state.rooms.filter((r) => isDm(r.name))],
         active: msg.channel,
       };
       if (first) {
@@ -301,7 +304,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     case "dm": {
       // The room is named after the other person; my own DMs come back to me and open the tab.
       const other = msg.from === state.nick ? msg.to : msg.from;
-      const chat: ChatMessage = { id: 0, channel: other, nick: msg.from, kind: msg.kind, text: msg.text, at: msg.at };
+      const chat: ChatMessage = { id: msg.id, channel: other, nick: msg.from, kind: msg.kind, text: msg.text, at: msg.at };
       const opened = withDm(state, other);
       const seq = opened.seq + 1;
       const next: State = {
@@ -314,6 +317,28 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         seq,
       };
       return msg.from === state.nick ? { ...next, active: other } : next;
+    }
+
+    case "dm_history": {
+      // The saved private messages with someone: they go first, and what is already on screen stays
+      // after them (a message that is in both is shown once). A tab typed in another case takes their nick.
+      const other = msg.with;
+      const typed = state.rooms.find((r) => r.name !== other && r.name.toLowerCase() === other.toLowerCase());
+      let next: State = typed
+        ? { ...updateRoom(state, typed.name, (r) => ({ ...r, name: other })), active: state.active === typed.name ? other : state.active }
+        : state;
+      next = withDm(next, other);
+      let seq = next.seq;
+      const saved: Line[] = msg.messages.map((m) => ({
+        kind: "message",
+        key: ++seq,
+        msg: { id: m.id, channel: other, nick: m.from, kind: m.kind, text: m.text, at: m.at },
+      }));
+      const last = Math.max(0, ...msg.messages.map((m) => m.id));
+      return updateRoom({ ...next, seq }, other, (r) => ({
+        ...r,
+        lines: trim([...saved, ...r.lines.filter((l) => l.kind === "event" || l.msg.id > last)]),
+      }));
     }
 
     case "invited": {
