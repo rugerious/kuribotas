@@ -222,3 +222,9 @@ test("/tema and /theme pick this device's look; anything else shows how", () => 
   assert.equal(parseInput("/tema", here, "pt").kind, "error");
   assert.equal(parseInput("/tema roxo", here, "pt").kind, "error");
 });
+
+test("/aparelho alone is for your own device; with a nick it asks for someone else's code", () => {
+  assert.deepEqual(parseInput("/aparelho", here, "pt"), { kind: "send", msg: { type: "make_device_link" } });
+  assert.deepEqual(parseInput("/aparelho Kota", here, "pt"), { kind: "send", msg: { type: "make_device_link", nick: "Kota" } });
+  assert.deepEqual(parseInput("/device Kota", here, "en"), { kind: "send", msg: { type: "make_device_link", nick: "Kota" } });
+});

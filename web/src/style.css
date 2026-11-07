@@ -791,6 +791,16 @@ button.person-who:hover,
   text-transform: uppercase;
   cursor: pointer;
 }
+/* Before entering from an invite: open it in the real browser (a sign-in made inside WhatsApp stays there). */
+.gate-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
 .gate-code {
   margin-top: 22px;
   padding-top: 18px;

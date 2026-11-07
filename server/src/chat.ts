@@ -384,8 +384,19 @@ export function attachChat(
       }
       case "make_device_link": {
         // Your phone makes a code for your computer (10 minutes, once). Anyone can, for themselves.
-        const { token, expiresAt } = makeInvite(store, "device", { personId: who.id, role: who.role, createdBy: who.id });
-        send(me, { type: "link", kind: "device", token, expiresAt });
+        // An @ can also make one for someone who lost their session (cleared phone, app opened inside
+        // WhatsApp…): they type the code at the door and are back in their own account.
+        const nick = msg.nick?.trim();
+        if (nick === undefined || nick === "" || nick.toLowerCase() === who.nick.toLowerCase()) {
+          const { token, expiresAt } = makeInvite(store, "device", { personId: who.id, role: who.role, createdBy: who.id });
+          send(me, { type: "link", kind: "device", token, expiresAt });
+          return;
+        }
+        if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can make a code for someone else");
+        const target = store.personByNick(nick);
+        if (target === undefined) return reject(me, "no_such_person", nick, `nobody called ${nick}`);
+        const { token, expiresAt } = makeInvite(store, "device", { personId: target.id, role: target.role, createdBy: who.id });
+        send(me, { type: "link", kind: "device", token, expiresAt, for: target.nick });
         return;
       }
       case "devices": {
@@ -846,8 +857,11 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       if (item === "batuque") return { type: "throw", channel, item };
       return nick === undefined ? undefined : { type: "throw", channel, item, nick };
     }
+    case "make_device_link": {
+      const nick = str("nick");
+      return nick === undefined ? { type: "make_device_link" } : { type: "make_device_link", nick };
+    }
     case "make_invite":
-    case "make_device_link":
     case "devices":
     case "rooms":
       return { type: v.type };

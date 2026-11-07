@@ -49,6 +49,7 @@ export type Words = {
     checking: string;
     codeLabel: string;
     codeButton: string;
+    openHint: string; // on an invite: open it in the real browser, then install
     errors: Record<
       "invite_unknown" | "invite_used" | "invite_expired" | "invalid_nick" | "nick_taken" | "too_many_tries" | "other" | "offline",
       string
@@ -92,6 +93,7 @@ export type Words = {
     roomDeleted: (channel: string, by: string) => string;
     inviteLink: (link: string, copied: boolean) => string;
     deviceLink: (link: string, code: string, copied: boolean) => string;
+    deviceLinkFor: (nick: string, link: string, code: string, copied: boolean) => string; // an @ helping someone back in
     devicesTitle: string;
     device: (id: number, name: string, since: string, seen: string, current: boolean) => string;
     devicesHelp: string;
@@ -171,8 +173,10 @@ const pt: Words = {
     deviceTitle: (nick) => `Entrar como ${nick} neste aparelho?`,
     deviceText: "Este link junta este aparelho à tua conta. Se não foste tu que o pediste, fecha esta página.",
     checking: "a ver o convite…",
-    codeLabel: "Já entraste noutro aparelho? Escreve lá /aparelho e mete aqui o código:",
+    codeLabel: "Já tinhas conta? Pede a um @ um código (ou escreve /aparelho no teu outro aparelho) e mete-o aqui:",
     codeButton: "Usar código",
+    openHint:
+      "Abriste isto dentro do WhatsApp? Toca em ⋮ e escolhe Abrir no Chrome (no iPhone: Abrir no Safari) antes de entrares, senão a entrada fica presa ao WhatsApp. Depois instala: ⋮ → Adicionar ao ecrã principal.",
     errors: {
       invite_unknown: "Este link de convite não existe. Será que ficou cortado ao copiar?",
       invite_used: "Este convite já foi usado. Pede outro 🙏",
@@ -243,6 +247,8 @@ const pt: Words = {
       `Convite para uma pessoa nova 🎟️ Vale uma vez, durante 7 dias: manda-o só a quem queres cá${copied ? " (copiado ✓)" : ""}: ${link}`,
     deviceLink: (link, code, copied) =>
       `Para o teu outro aparelho (10 minutos): abre ${link}${copied ? " (copiado ✓)" : ""} ou mete o código ${code} na porta 🚪`,
+    deviceLinkFor: (nick, link, code, copied) =>
+      `Código para ${nick} voltar a entrar: ${code} (10 minutos, uma vez). Manda-lho por mensagem: escreve-o na porta, ou abre ${link}${copied ? " (copiado ✓)" : ""} 🔑`,
     devicesTitle: "Os teus aparelhos:",
     device: (id, name, since, seen, current) =>
       `[${id}] ${name || "aparelho"} · entrou ${since} · visto ${seen}${current ? " ← este" : ""}`,
@@ -301,7 +307,7 @@ const pt: Words = {
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
     "/msg <nick> [mensagem] — conversa privada 💬 (não fica guardada)",
-    "/aparelho — juntar outro aparelho teu (link ou código, 10 minutos) · /aparelhos — os teus aparelhos · /xau — sair deste aparelho (/xau 2 tira outro)",
+    "/aparelho — juntar outro aparelho teu (link ou código, 10 minutos) · /aparelho <nick> — (@) um código para alguém que perdeu a entrada · /aparelhos — os teus aparelhos · /xau — sair deste aparelho (/xau 2 tira outro)",
     "/salas — todas as salas, quem lá está e o tópico",
     "/convite — (@) um link para trazer uma pessoa nova 🎟️ · /op · /deop <nick> — dar ou tirar @ · /expulsar <nick> — tirar alguém do Kuribotas",
     "/principal #sala — (@) sala onde todos entram 🏠 (/principal -#sala para tirar) · /apagar #sala — (@) apagar uma sala",
@@ -368,8 +374,10 @@ const en: Words = {
     deviceTitle: (nick) => `Sign in as ${nick} on this device?`,
     deviceText: "This link adds this device to your account. If you didn't ask for it, close this page.",
     checking: "checking the invite…",
-    codeLabel: "Already in on another device? Type /device there and enter the code here:",
+    codeLabel: "Already had an account? Ask an @ for a code (or type /device on your other device) and enter it here:",
     codeButton: "Use code",
+    openHint:
+      "Opened this inside WhatsApp? Tap ⋮ and choose Open in Chrome (on iPhone: Open in Safari) before you enter, or you'll be signed in only inside WhatsApp. Then install it: ⋮ → Add to Home screen.",
     errors: {
       invite_unknown: "This invite link doesn't exist. Maybe it got cut off when copied?",
       invite_used: "This invite has already been used. Ask for another 🙏",
@@ -439,6 +447,8 @@ const en: Words = {
       `Invite for one new person 🎟️ It works once, for 7 days: send it only to who you want here${copied ? " (copied ✓)" : ""}: ${link}`,
     deviceLink: (link, code, copied) =>
       `For your other device (10 minutes): open ${link}${copied ? " (copied ✓)" : ""} or enter the code ${code} at the door 🚪`,
+    deviceLinkFor: (nick, link, code, copied) =>
+      `Code for ${nick} to get back in: ${code} (10 minutes, once). Send it to them: they type it at the door, or open ${link}${copied ? " (copied ✓)" : ""} 🔑`,
     devicesTitle: "Your devices:",
     device: (id, name, since, seen, current) =>
       `[${id}] ${name || "device"} · since ${since} · seen ${seen}${current ? " ← this one" : ""}`,
@@ -497,7 +507,7 @@ const en: Words = {
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",
     "/msg <nick> [message] — private chat 💬 (not saved)",
-    "/device — add another device of yours (link or code, 10 minutes) · /devices — your devices · /logout — sign this device out (/logout 2 removes another)",
+    "/device — add another device of yours (link or code, 10 minutes) · /device <nick> — (@) a code for someone who lost their sign-in · /devices — your devices · /logout — sign this device out (/logout 2 removes another)",
     "/rooms — every room, who's in it and its topic",
     "/invitelink — (@) a link to bring in a new person 🎟️ · /op · /deop <nick> — give or take @ · /kick <nick> — remove someone from Kuribotas",
     "/home #room — (@) a room everyone joins 🏠 (/home -#room to take it off) · /delete #room — (@) delete a room",
