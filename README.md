@@ -19,11 +19,11 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 ## Screenshots
 
 <p>
-  <img src="docs/screenshot-phone.png" alt="Kuribotas on a Portuguese phone: a wooden spoon lands with a big TOC! over the chat, tabs for #mujimbo, the private channel #primos and a private chat with Mais_Velho, and Kamba está a escrever… above the message box" width="280">
-  <img src="docs/screenshot-desktop.png" alt="The same chat on an English desktop: the people list with statuses, captions and buttons for a private chat, a nudge and a tornado; the family emoji bar open; Estraga_Lar is typing…" width="560">
+  <img src="docs/screenshot-phone.png" alt="Kuribotas on a Portuguese phone in the dark theme: the peeker in the corner, the folded ⚙️ tab, #mujimbo and a private chat with Mais_Velho with one unread message, the family arranging Sunday lunch, and Kota offered above the message box after typing ko" width="280">
+  <img src="docs/screenshot-desktop.png" alt="The same chat on an English desktop in the light theme: the KURI BOTAS puzzle logo, the topic, the people list with Kota's row open showing private, nudge and tornado, and two people typing" width="560">
 </p>
 
-*Made-up nicks and messages. Left: a Portuguese phone at the moment the Maria das Dores lands (`/mariadasdores Kota`), with a 🔒 private channel and a 💬 private chat open. Right: the same chat on an English desktop, with the people list (💬 📳 🌪️ for each person) and the family emoji bar.*
+*Made-up nicks and messages. Left: a Portuguese phone in the dark theme, typing `ko` and being offered **Kota**. Right: the same chat on an English desktop in the light theme, with Kota's row tapped open in the people list.*
 
 ## Status
 
