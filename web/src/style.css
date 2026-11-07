@@ -644,6 +644,86 @@ button.person-who:hover,
   border-top: 1px solid var(--border);
 }
 
+/* Nick completion: the names that fit what's being typed, above the box (tap one, or Tab). */
+.complete-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.complete {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font: 500 14px var(--mono);
+  cursor: pointer;
+}
+
+/* The Dicas tab */
+.tab-tips {
+  color: var(--amber);
+}
+.tab-tips.active {
+  border-top-color: var(--amber);
+  color: var(--amber);
+}
+.body.hidden {
+  display: none;
+}
+.tips {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 24px;
+  background: var(--panel);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.tips-intro {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+.tips-section h2 {
+  margin: 18px 0 8px;
+  font: 400 22px/1 var(--display);
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+.tips ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tip {
+  display: block;
+  padding: 8px 10px;
+  border-left: 2px solid var(--border);
+}
+.tip-try {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--amber);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tip-try code {
+  font: 500 14px var(--mono);
+  color: var(--amber);
+}
+
 /* The family emoji bar, above the message box */
 .emoji-bar {
   display: flex;

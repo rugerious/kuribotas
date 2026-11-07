@@ -189,6 +189,22 @@ test("someone joining shows up as Na bardea with no note until their status arri
   assert.deepEqual(s.rooms[0]?.members.at(-1), { nick: "Kota", status: "online", note: "" });
 });
 
+test("a quiet device keeps the people list right but shows no arrived or left lines", () => {
+  const quiet = reduce(arrived(), { type: "quietJoins", on: true, at });
+  const before = quiet.rooms[0]?.lines.length ?? 0;
+  const s = apply(
+    quiet,
+    { type: "join", channel: "#mujimbo", nick: "Kota" },
+    { type: "join", channel: "#mujimbo", nick: "Kamba" },
+    { type: "part", channel: "#mujimbo", nick: "Kamba" },
+    { type: "quit", nick: "Kota" },
+  );
+  assert.equal(s.rooms[0]?.lines.length, before);
+  assert.equal(nicks(s).includes("Kota"), false);
+  const loud = apply(reduce(s, { type: "quietJoins", on: false, at }), { type: "join", channel: "#mujimbo", nick: "Kota" });
+  assert.match(texts(loud.rooms[0]?.lines ?? []).at(-1) ?? "", /Kota/);
+});
+
 test("switching language says so in the new language; earlier lines stay as they were", () => {
   const before = arrived(); // English
   const s = reduce(before, { type: "lang", lang: "pt", at });

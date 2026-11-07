@@ -24,6 +24,7 @@ import {
   unlockSound,
   vibrate,
 } from "./sound.ts";
+import { complete, completions } from "./complete.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
 import { showCode } from "./invite.ts";
 import { Peeker } from "./peeker.tsx";
@@ -43,6 +44,7 @@ const TYPING_REPEAT_MS = 3000; // while typing, tell the others again this often
 const COLOURS_KEY = "kuribotas.colours";
 const LANG_KEY = "kuribotas.lang";
 const SHAKE_KEY = "kuribotas.shake"; // "off" = no nudges on this device
+const JOINS_KEY = "kuribotas.joins"; // "off" = no arrived/left lines on this device
 // Notifications on this device (/notificacoes). The browser keeps the subscription; we remember the
 // choice so the app can tell the server again after every reconnection (nick and channels may change).
 const PUSH_KEY = "kuribotas.push";
@@ -172,6 +174,23 @@ function saveLang(lang: Lang): void {
   }
 }
 
+function loadQuietJoins(): boolean {
+  try {
+    return localStorage.getItem(JOINS_KEY) === "off";
+  } catch {
+    return false;
+  }
+}
+
+function saveQuietJoins(quiet: boolean): void {
+  try {
+    if (quiet) localStorage.setItem(JOINS_KEY, "off");
+    else localStorage.removeItem(JOINS_KEY);
+  } catch {
+    // storage blocked: it still applies until the app closes
+  }
+}
+
 function loadColours(): Record<string, RoomColour> {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(COLOURS_KEY) ?? "{}");
@@ -202,11 +221,14 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     ...s,
     lang: startLang(),
     colours: loadColours(),
+    quietJoins: loadQuietJoins(),
   }));
   const [showPeople, setShowPeople] = useState(false);
   const [shakeOn, setShakeOn] = useState(loadShake);
   const [shaking, setShaking] = useState<"" | "nudge" | "tornado">("");
   const [editingNote, setEditingNote] = useState(false);
+  const [showTips, setShowTips] = useState(false); // the Dicas tab is open (it's not a channel)
+  const [prefill, setPrefill] = useState<{ text: string; key: number } | null>(null);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
   const stateRef = useRef(state); // the latest state, for the socket's event handlers
   stateRef.current = state;
@@ -491,6 +513,9 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         playNudge(parsed.tornado); // hear it straight away
         return say(w.events.sound(parsed.name, parsed.tornado));
       }
+      case "joins":
+        saveQuietJoins(!parsed.on);
+        return dispatch({ type: "quietJoins", on: !parsed.on, at: now() });
       case "theme":
         saveTheme(parsed.theme);
         applyTheme(parsed.theme);
@@ -586,13 +611,24 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       )}
 
       <nav class="tabs" aria-label="Canais / Channels">
+        <button
+          type="button"
+          class={`tab tab-tips${showTips ? " active" : ""}`}
+          aria-current={showTips ? "page" : undefined}
+          onClick={() => setShowTips(true)}
+        >
+          {w.ui.tipsTab}
+        </button>
         {state.rooms.map((r) => (
           <button
             key={r.name}
             type="button"
-            class={`tab room-${colourOf(state, r.name)}${r.name === state.active ? " active" : ""}`}
-            aria-current={r.name === state.active ? "page" : undefined}
-            onClick={() => dispatch({ type: "focus", channel: r.name })}
+            class={`tab room-${colourOf(state, r.name)}${r.name === state.active && !showTips ? " active" : ""}`}
+            aria-current={r.name === state.active && !showTips ? "page" : undefined}
+            onClick={() => {
+              setShowTips(false);
+              dispatch({ type: "focus", channel: r.name });
+            }}
           >
             {isDm(r.name) ? `💬 ${r.name}` : r.private ? `🔒 ${r.name}` : r.name}
             {r.unread > 0 && <span class="badge">{r.unread}</span>}
@@ -600,7 +636,17 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         ))}
       </nav>
 
-      {room && (
+      {showTips && (
+        <Tips
+          w={w}
+          onTry={(cmd) => {
+            setShowTips(false);
+            setPrefill({ text: cmd, key: Date.now() });
+          }}
+        />
+      )}
+
+      {room && !showTips && (
         <div class="topic">
           <button
             type="button"
@@ -630,7 +676,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
       )}
 
-      <div class="body">
+      <div class={showTips ? "body hidden" : "body"}>
         <Log lines={room?.lines ?? []} />
         {room && !isDm(room.name) && (
           <People
@@ -646,8 +692,50 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       </div>
 
       <div class="typing">{w.ui.typing(typers)}</div>
-      <InputBar onSubmit={submit} onTyping={typing} disabled={!online} channel={state.active} w={w} />
+      <InputBar
+        onSubmit={(text) => {
+          setShowTips(false);
+          submit(text);
+        }}
+        onTyping={typing}
+        disabled={!online}
+        channel={state.active}
+        nicks={room === undefined ? [] : isDm(room.name) ? [room.name] : room.members.map((m) => m.nick).filter((n) => n !== state.nick)}
+        prefill={prefill}
+        w={w}
+      />
     </div>
+  );
+}
+
+// The Dicas tab: the help, in sections, always there (never a channel, never expires). Tapping a tip
+// that has a command closes the tab and puts the command in the box, ready to try.
+function Tips({ w, onTry }: { w: Words; onTry: (cmd: string) => void }) {
+  return (
+    <section class="tips" aria-label={w.ui.tipsTab}>
+      <p class="tips-intro">{w.ui.tipsIntro}</p>
+      {w.tips.map((section) => (
+        <div key={section.title} class="tips-section">
+          <h2>{section.title}</h2>
+          <ul>
+            {section.items.map((tip) =>
+              tip.cmd === undefined ? (
+                <li key={tip.text} class="tip">
+                  {tip.text}
+                </li>
+              ) : (
+                <li key={tip.text}>
+                  <button type="button" class="tip tip-try" onClick={() => onTry(tip.cmd ?? "")}>
+                    <span>{tip.text}</span>
+                    <code>{tip.cmd.trim()}</code>
+                  </button>
+                </li>
+              ),
+            )}
+          </ul>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -862,15 +950,20 @@ function InputBar({
   onTyping,
   disabled,
   channel,
+  nicks,
+  prefill,
   w,
 }: {
   onSubmit: (text: string) => void;
   onTyping: (channel: string, typing: boolean) => void;
   disabled: boolean;
   channel: string;
+  nicks: string[]; // who can be completed here (not me)
+  prefill: { text: string; key: number } | null; // a command tapped in Dicas, put in the box to try
   w: Words;
 }) {
   const [text, setText] = useState("");
+  const [cursor, setCursor] = useState(0);
   const [showEmoji, setShowEmoji] = useState(false);
   const box = useRef<HTMLInputElement>(null);
   // Where we last said "is typing", and when: repeated every few seconds, stopped once.
@@ -879,6 +972,30 @@ function InputBar({
   const stopTyping = (): void => {
     if (told.current !== null) onTyping(told.current.channel, false);
     told.current = null;
+  };
+
+  // A tip tapped in Dicas: into the box, cursor at the end, ready to finish or send.
+  useEffect(() => {
+    if (prefill === null) return;
+    setText(prefill.text);
+    setCursor(prefill.text.length);
+    requestAnimationFrame(() => {
+      box.current?.focus();
+      box.current?.setSelectionRange(prefill.text.length, prefill.text.length);
+    });
+  }, [prefill?.key]);
+
+  // Typing the start of a name offers it (tap it, or Tab on a keyboard).
+  const offer = disabled ? null : completions(text, cursor, nicks);
+  const pick = (nick: string): void => {
+    if (offer === null) return;
+    const done = complete(text, offer, nick);
+    changed(done.text);
+    setCursor(done.cursor);
+    requestAnimationFrame(() => {
+      box.current?.focus();
+      box.current?.setSelectionRange(done.cursor, done.cursor);
+    });
   };
 
   // Switching tab mid-sentence: the old channel shouldn't think we're still typing there.
@@ -910,6 +1027,15 @@ function InputBar({
 
   return (
     <>
+      {offer !== null && (
+        <div class="complete-bar" role="group" aria-label={w.ui.complete}>
+          {offer.matches.map((nick) => (
+            <button key={nick} type="button" class={`complete ${nickClass(nick)}`} onClick={() => pick(nick)}>
+              {nick}
+            </button>
+          ))}
+        </div>
+      )}
       {showEmoji && (
         <div class="emoji-bar" role="group" aria-label={w.ui.emoji}>
           {FAMILY_EMOJI.map((emoji) => (
@@ -925,6 +1051,7 @@ function InputBar({
         e.preventDefault();
         onSubmit(text);
         setText("");
+        setCursor(0);
         setShowEmoji(false);
         // A message clears "is typing" for everyone; a command needs an explicit stop.
         if (isMessage(text)) told.current = null;
@@ -949,7 +1076,18 @@ function InputBar({
         id="message"
         ref={box}
         value={text}
-        onInput={(e) => changed(e.currentTarget.value)}
+        onInput={(e) => {
+          changed(e.currentTarget.value);
+          setCursor(e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+        }}
+        onKeyUp={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
+        onClick={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
+        onKeyDown={(e) => {
+          if (e.key === "Tab" && offer !== null && offer.matches[0] !== undefined) {
+            e.preventDefault();
+            pick(offer.matches[0]);
+          }
+        }}
         placeholder={w.ui.placeholder(channel)}
         maxLength={2000}
         autoComplete="off"

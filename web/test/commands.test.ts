@@ -228,3 +228,9 @@ test("/aparelho alone is for your own device; with a nick it asks for someone el
   assert.deepEqual(parseInput("/aparelho Kota", here, "pt"), { kind: "send", msg: { type: "make_device_link", nick: "Kota" } });
   assert.deepEqual(parseInput("/device Kota", here, "en"), { kind: "send", msg: { type: "make_device_link", nick: "Kota" } });
 });
+
+test("/entradas and /joins show or hide the arrived and left lines on this device", () => {
+  assert.deepEqual(parseInput("/entradas nao", here, "pt"), { kind: "joins", on: false });
+  assert.deepEqual(parseInput("/joins on", here, "en"), { kind: "joins", on: true });
+  assert.equal(parseInput("/entradas talvez", here, "pt").kind, "error");
+});
