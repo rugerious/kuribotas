@@ -37,6 +37,24 @@ curl -sI https://<domain>/main.js | grep -i cache-control   # must say no-cache 
 
 The tunnel keeps running; the app restarts in a few seconds and every client reconnects on its own.
 
+## Load test
+
+`deploy.sh` installs `/opt/kuribotas/loadtest.sh`. It starts a **throwaway copy** of the running image
+(same 300 MB limit, its own empty database in a temporary folder, no tunnel), fills it with fake people
+from `server/src/loadtest.ts` and removes everything afterwards: the family's app and data are not touched
+(the test refuses any database that already has people).
+
+```bash
+CID=$(aws ssm send-command --instance-ids <instance id> --document-name AWS-RunShellScript \
+  --parameters 'commands=["/opt/kuribotas/loadtest.sh"]' --query Command.CommandId --output text)
+sleep 150 && aws ssm get-command-invocation --command-id "$CID" --instance-id <instance id> \
+  --query StandardOutputContent --output text
+```
+
+Default phases: 50 people each saying something every ~10 s for a minute (a busy family evening), then
+150 people every ~5 s (three times the family, six times the pace). Other phases:
+`/opt/kuribotas/loadtest.sh 100x2x60` (PEOPLExEVERYxSECONDS).
+
 ## Backups
 
 Every night at about 03:30 UTC (`kuribotas-backup.timer`) the server makes a consistent copy of the

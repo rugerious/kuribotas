@@ -29,7 +29,8 @@ mv .env.new .env
 fetch compose.yaml compose.yaml
 fetch server/backup.sh backup.sh
 fetch server/deploy.sh deploy.sh # this script, for the next deploy
-chmod 700 backup.sh deploy.sh
+fetch server/loadtest.sh loadtest.sh # run by hand: a load test on a throwaway copy of the app
+chmod 700 backup.sh deploy.sh loadtest.sh
 umask 022
 fetch server/kuribotas-backup.service /etc/systemd/system/kuribotas-backup.service
 fetch server/kuribotas-backup.timer /etc/systemd/system/kuribotas-backup.timer
