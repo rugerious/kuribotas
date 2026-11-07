@@ -1,5 +1,6 @@
 import type { ClientMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { isDm, ROOM_COLOURS, type RoomColour } from "./state.ts";
+import { themeNamed, type Theme } from "./theme.ts";
 import { isLang, words, type Lang } from "./words.ts";
 
 // What the input box means: a protocol message to send, something handled on this device,
@@ -12,6 +13,7 @@ export type Parsed =
   | { kind: "colour"; colour?: RoomColour } // handled on this device; no colour = the next one
   | { kind: "lang"; lang: Lang } // handled on this device
   | { kind: "shake"; on: boolean } // handled on this device
+  | { kind: "theme"; theme: Theme } // handled on this device: escuro | claro | auto
   | { kind: "sound"; tornado: boolean; name?: string } // handled on this device; no name = list the options
   | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
   | { kind: "closeDm"; nick: string } // close a private chat tab
@@ -36,6 +38,7 @@ const ALIASES: Record<string, string> = {
   "/língua": "/lang",
   "/abanar": "/nudge",
   "/abanoes": "/shake",
+  "/tema": "/theme",
   "/abanões": "/shake",
   "/som": "/sound",
   "/m": "/msg",
@@ -198,6 +201,10 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (YES.includes(answer)) return { kind: "shake", on: true };
       if (NO.includes(answer)) return { kind: "shake", on: false };
       return usage(w.examples.shake);
+    }
+    case "/theme": {
+      const theme = themeNamed(firstWord);
+      return theme ? { kind: "theme", theme } : usage(w.examples.theme);
     }
     case "/msg": {
       if (!firstWord) return usage(w.examples.msg);

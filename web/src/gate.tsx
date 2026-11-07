@@ -101,9 +101,7 @@ export function Gate() {
         <div class="gate-peeker">
           <Peeker />
         </div>
-        <h1 class="brand">
-          KURI<span>BOTAS</span>
-        </h1>
+        <h1 class="visually-hidden">Kuribotas</h1>
         {phase.kind === "checking" && <p class="gate-text">{w.gate.checking}</p>}
         {phase.kind === "door" && (
           <>

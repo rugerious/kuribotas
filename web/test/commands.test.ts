@@ -214,3 +214,11 @@ test("rooms: the list, home rooms and deleting (with a yes when it has messages)
   assert.deepEqual(parseInput("/apagar #teste sim", here, "pt"), { kind: "send", msg: { type: "delete_room", channel: "#teste", confirm: true } });
   assert.deepEqual(parseInput("/principal", here, "pt"), { kind: "error", text: "Usa assim: /principal #sala | -#sala" });
 });
+
+test("/tema and /theme pick this device's look; anything else shows how", () => {
+  assert.deepEqual(parseInput("/tema claro", here, "pt"), { kind: "theme", theme: "claro" });
+  assert.deepEqual(parseInput("/theme dark", here, "en"), { kind: "theme", theme: "escuro" });
+  assert.deepEqual(parseInput("/tema auto", here, "pt"), { kind: "theme", theme: "auto" });
+  assert.equal(parseInput("/tema", here, "pt").kind, "error");
+  assert.equal(parseInput("/tema roxo", here, "pt").kind, "error");
+});
