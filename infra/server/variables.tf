@@ -11,7 +11,7 @@ variable "instance_type" {
 }
 
 variable "alert_email" {
-  description = "Who gets the budget alerts. In terraform.tfvars (git-ignored)."
+  description = "Who gets the budget and backup alerts. In terraform.tfvars (git-ignored)."
   type        = string
 }
 
