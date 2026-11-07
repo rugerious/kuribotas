@@ -83,7 +83,11 @@ export type Words = {
     sounds: (current: string, options: readonly string[], tornado: boolean) => string;
     disconnected: string;
     reconnected: string;
-    lostPrivate: (channels: string) => string;
+    roomsTitle: string;
+    room: (name: string, people: number, topic: string, home: boolean, isPrivate: boolean) => string;
+    roomsHelp: string;
+    home: (by: string, channel: string, on: boolean) => string;
+    roomDeleted: (channel: string, by: string) => string;
     inviteLink: (link: string, copied: boolean) => string;
     deviceLink: (link: string, code: string, copied: boolean) => string;
     devicesTitle: string;
@@ -94,7 +98,7 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -220,7 +224,12 @@ const pt: Words = {
         : `Sons do abanão: ${options.join(" · ")} (agora: ${current}). Escolhe com /som <nome> · tornados: /som tornado`,
     disconnected: "Ligação perdida. A voltar a ligar…",
     reconnected: "De volta! 🔌",
-    lostPrivate: (chs) => `Ao perderes a ligação saíste de ${chs} 🔒 Pede um novo convite para voltar`,
+    roomsTitle: "Salas:",
+    room: (name, people, topic, home, priv) =>
+      `${priv ? "🔒 " : home ? "🏠 " : ""}${name} · ${people === 0 ? "ninguém" : people === 1 ? "1 pessoa" : `${people} pessoas`}${topic ? ` · ${topic}` : ""}`,
+    roomsHelp: "Para entrar: /join #sala · 🏠 = sala principal (todos estão lá)",
+    home: (by, ch, on) => (on ? `${by} fez de ${ch} uma sala principal 🏠 (todos entram)` : `${by} tirou ${ch} das salas principais`),
+    roomDeleted: (ch, by) => `${ch} foi apagada por ${by}`,
     inviteLink: (link, copied) =>
       `Convite para uma pessoa nova 🎟️ Vale uma vez, durante 7 dias: manda-o só a quem queres cá${copied ? " (copiado ✓)" : ""}: ${link}`,
     deviceLink: (link, code, copied) =>
@@ -257,9 +266,12 @@ const pt: Words = {
     cant_deop_self: () => "Não podes tirar o teu próprio @: pede a outro @",
     no_such_device: (d) => `Não tens o aparelho ${d} (vê /aparelhos)`,
     too_fast: (d) => `Calma, kamba! Mensagens a mais seguidas: espera ${d} s`,
+    no_such_channel: (d) => `Não há nenhuma sala ${d} (vê /salas)`,
+    cant_delete_home: (d) => `${d} é uma sala principal 🏠: tira-a primeiro com /principal -${d} (o #mujimbo fica sempre)`,
+    confirm_delete: (d) => `Essa sala tem ${d === "1" ? "1 mensagem" : `${d} mensagens`}, que se perde${d === "1" ? "" : "m"}. Para apagar mesmo: /apagar #sala sim`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -281,7 +293,9 @@ const pt: Words = {
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
     "/msg <nick> [mensagem] — conversa privada 💬 (não fica guardada)",
     "/aparelho — juntar outro aparelho teu (link ou código, 10 minutos) · /aparelhos — os teus aparelhos · /xau — sair deste aparelho (/xau 2 tira outro)",
+    "/salas — todas as salas, quem lá está e o tópico",
     "/convite — (@) um link para trazer uma pessoa nova 🎟️ · /op · /deop <nick> — dar ou tirar @ · /expulsar <nick> — tirar alguém do Kuribotas",
+    "/principal #sala — (@) sala onde todos entram 🏠 (/principal -#sala para tirar) · /apagar #sala — (@) apagar uma sala",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
@@ -398,7 +412,12 @@ const en: Words = {
         : `Nudge sounds: ${options.join(" · ")} (now: ${current}). Pick one with /sound <name> · tornadoes: /sound tornado`,
     disconnected: "Connection lost. Reconnecting…",
     reconnected: "Back online! 🔌",
-    lostPrivate: (chs) => `You left ${chs} when the connection dropped 🔒 ask for a new invite`,
+    roomsTitle: "Rooms:",
+    room: (name, people, topic, home, priv) =>
+      `${priv ? "🔒 " : home ? "🏠 " : ""}${name} · ${people === 0 ? "nobody" : people === 1 ? "1 person" : `${people} people`}${topic ? ` · ${topic}` : ""}`,
+    roomsHelp: "To join: /join #room · 🏠 = home room (everyone's in it)",
+    home: (by, ch, on) => (on ? `${by} made ${ch} a home room 🏠 (everyone joins)` : `${by} took ${ch} off the home rooms`),
+    roomDeleted: (ch, by) => `${ch} was deleted by ${by}`,
     inviteLink: (link, copied) =>
       `Invite for one new person 🎟️ It works once, for 7 days: send it only to who you want here${copied ? " (copied ✓)" : ""}: ${link}`,
     deviceLink: (link, code, copied) =>
@@ -435,9 +454,12 @@ const en: Words = {
     cant_deop_self: () => "you can't drop your own @: ask another @",
     no_such_device: (d) => `you have no device ${d} (see /devices)`,
     too_fast: (d) => `easy there! Too many messages in a row: wait ${d} s`,
+    no_such_channel: (d) => `there's no room ${d} (see /rooms)`,
+    cant_delete_home: (d) => `${d} is a home room 🏠: take it off first with /home -${d} (#mujimbo always stays)`,
+    confirm_delete: (d) => `that room has ${d === "1" ? "1 message" : `${d} messages`}, which will be lost. To delete it anyway: /delete #room yes`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -459,7 +481,9 @@ const en: Words = {
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",
     "/msg <nick> [message] — private chat 💬 (not saved)",
     "/device — add another device of yours (link or code, 10 minutes) · /devices — your devices · /logout — sign this device out (/logout 2 removes another)",
+    "/rooms — every room, who's in it and its topic",
     "/invitelink — (@) a link to bring in a new person 🎟️ · /op · /deop <nick> — give or take @ · /kick <nick> — remove someone from Kuribotas",
+    "/home #room — (@) a room everyone joins 🏠 (/home -#room to take it off) · /delete #room — (@) delete a room",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",

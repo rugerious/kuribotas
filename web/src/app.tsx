@@ -287,6 +287,12 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     }
     if (msg.type === "link") return showLink(msg.kind, msg.token);
     if (msg.type === "devices") return showDevices(msg.devices);
+    if (msg.type === "rooms") {
+      const t = words(stateRef.current.lang).events;
+      const lines = [t.roomsTitle, ...msg.rooms.map((r) => t.room(r.name, r.people, r.topic, r.home, r.private)), t.roomsHelp];
+      for (const text of lines) dispatch({ type: "local", text, tone: "info", at: now() });
+      return;
+    }
     const reconnecting = msg.type === "welcome" && stateRef.current.rooms.length > 0;
     dispatch({ type: "server", msg, at: now() });
     if (reconnecting) rejoin(ws);

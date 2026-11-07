@@ -204,3 +204,13 @@ test("accounts: invites, devices, signing out, @", () => {
   assert.deepEqual(parseInput("/kick Kota", here, "en"), { kind: "send", msg: { type: "remove", nick: "Kota" } });
   assert.deepEqual(parseInput("/expulsar", here, "pt"), { kind: "error", text: "Usa assim: /expulsar <nick>" });
 });
+
+test("rooms: the list, home rooms and deleting (with a yes when it has messages)", () => {
+  assert.deepEqual(parseInput("/salas", here, "pt"), { kind: "send", msg: { type: "rooms" } });
+  assert.deepEqual(parseInput("/list", here, "en"), { kind: "send", msg: { type: "rooms" } });
+  assert.deepEqual(parseInput("/principal angola", here, "pt"), { kind: "send", msg: { type: "home", channel: "#angola", on: true } });
+  assert.deepEqual(parseInput("/home -#angola", here, "en"), { kind: "send", msg: { type: "home", channel: "#angola", on: false } });
+  assert.deepEqual(parseInput("/apagar #teste", here, "pt"), { kind: "send", msg: { type: "delete_room", channel: "#teste", confirm: false } });
+  assert.deepEqual(parseInput("/apagar #teste sim", here, "pt"), { kind: "send", msg: { type: "delete_room", channel: "#teste", confirm: true } });
+  assert.deepEqual(parseInput("/principal", here, "pt"), { kind: "error", text: "Usa assim: /principal #sala | -#sala" });
+});

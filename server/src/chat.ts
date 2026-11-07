@@ -59,7 +59,7 @@ class Member {
   }
 }
 
-const HOME_CHANNEL = "#mujimbo"; // everyone lands here
+const HOME_CHANNEL = "#mujimbo"; // where the app opens (and the first home room)
 const HISTORY_LIMIT = 50; // messages sent when joining a channel
 const MAX_TEXT_LENGTH = 2000; // characters per chat message
 const MAX_TOPIC_LENGTH = 200; // characters per topic
@@ -99,9 +99,10 @@ export type Admit = (req: IncomingMessage) => { person: Person; sessionHash: str
 // Close code for a device whose session ended: the app goes back to the door instead of reconnecting.
 export const SIGNED_OUT = 4401;
 
-// A private channel lives in memory until its last member leaves: no row in the database, no saved
-// messages, hidden from the channel list. Only invited people may join; leaving means asking again.
-type PrivateChannel = { topic: string; invited: Set<number> };
+// Rooms stay (phase 4b): every room is saved, private ones (🔒) too: hidden from the list, with no
+// saved messages, open only to their members. A person's memberships are the rooms their devices
+// reopen on every connection, so a phone locking (= reconnecting) no longer throws anyone out.
+// Leaving with /bazar ends the membership; the last member out of a private room takes it along.
 
 export function attachChat(
   server: Server,
@@ -111,7 +112,6 @@ export function attachChat(
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const members = new Set<Member>();
   const people = new Map<number, Someone>();
-  const privates = new Map<string, PrivateChannel>();
   const lastMentionPush = new Map<string, number>(); // endpoint -> when
 
   // Only /ws may upgrade to a WebSocket, only from our own page, and only for someone signed in.
@@ -173,7 +173,12 @@ export function attachChat(
     });
     members.add(me);
     send(me, { type: "welcome", nick: me.nick, role: who.role, channels: store.listChannels() });
-    run(me, () => join(me, HOME_CHANNEL));
+    // Home rooms (everyone's) first, then this person's own rooms, private ones included.
+    run(me, () => {
+      for (const room of new Set([HOME_CHANNEL, ...store.homeRooms(), ...store.roomsOf(who.id)])) {
+        if (store.room(room) !== undefined || room === HOME_CHANNEL) join(me, room);
+      }
+    });
 
     ws.on("message", (data, isBinary) => {
       if (isBinary) return;
@@ -185,9 +190,7 @@ export function attachChat(
     ws.on("close", () => {
       members.delete(me);
       const left = [...me.channels].filter((channel) => !personIn(who, channel)); // no other device of theirs there
-      for (const channel of left) forgetPrivate(channel, who);
-      const gone = devicesOf(who).length === 0;
-      if (gone) for (const p of privates.values()) p.invited.delete(who.id);
+      const gone = devicesOf(who).length === 0; // their rooms wait for them: memberships stay
       if (!visible(me)) return; // they already looked gone
       if (!gone) {
         // Still here on another device: only the channels this one alone was in see them leave.
@@ -225,13 +228,13 @@ export function attachChat(
           return reject(me, "invalid_channel", channel, "invalid channel: use # and 1-32 letters, digits, _ or -");
         }
         if (me.channels.has(channel)) return;
-        const secret = privates.get(channel);
-        if (msg.private === true && secret === undefined) {
-          if (store.listChannels().some((c) => c.name === channel)) {
-            return reject(me, "channel_exists", channel, `${channel} is already a public channel`);
-          }
-          privates.set(channel, { topic: "", invited: new Set([who.id]) });
-        } else if (secret !== undefined && !secret.invited.has(who.id)) {
+        const existing = store.room(channel);
+        if (msg.private === true && existing === undefined) {
+          store.createRoom(channel, new Date().toISOString(), true);
+          store.addMember(who.id, channel, new Date().toISOString());
+        } else if (msg.private === true && existing !== undefined && !existing.private) {
+          return reject(me, "channel_exists", channel, `${channel} is already a public channel`);
+        } else if (existing?.private === true && !store.isMember(who.id, channel)) {
           return reject(me, "invite_only", channel, `${channel} is private: ask a member to /invite you`);
         }
         join(me, channel);
@@ -276,7 +279,9 @@ export function attachChat(
         if (personIn(target.who, channel)) {
           return reject(me, "already_in_channel", target.nick, `${target.nick} is already in ${channel}`);
         }
-        privates.get(channel)?.invited.add(target.who.id); // a public channel needs no ticket: the invite is just a nudge to come
+        // A private room's invite is a membership: it waits for them, even offline. A public room needs
+        // no ticket: the invite is just a nudge to come.
+        if (isPrivate(channel)) store.addMember(target.who.id, channel, new Date().toISOString());
         const invited: ServerMessage = { type: "invited", channel, from: me.nick, to: target.nick };
         sendPerson(target.who, invited);
         if (target.who !== who) sendPerson(who, invited);
@@ -304,7 +309,7 @@ export function attachChat(
         else send(me, part);
         me.channels.delete(channel);
         me.typingIn.delete(channel);
-        if (!elsewhere) forgetPrivate(channel, who);
+        if (!elsewhere) leaveRoom(channel, who);
         syncPush(me);
         return;
       }
@@ -317,12 +322,13 @@ export function attachChat(
         if (tooFast(me)) return;
         // Saved first: if this throws, nothing is broadcast (not saved = not delivered).
         // Speaking while invisible is allowed: the message shows, the person stays out of the list.
-        // Private channels are never saved (until accounts): their messages get id 0.
+        // Private rooms' messages are not saved: they get id 0.
         const said = { channel, nick: me.nick, kind: msg.type, text, at: new Date().toISOString() };
-        const saved = privates.has(channel) ? { id: 0, ...said } : store.addMessage(said);
+        const secret = isPrivate(channel);
+        const saved = secret ? { id: 0, ...said } : store.addMessage(said);
         me.typingIn.delete(channel); // the others clear "is typing" when the message arrives
         sendToChannel(channel, { type: "message", ...saved });
-        if (!privates.has(channel)) notifyMentions(me, channel, text);
+        if (!secret) notifyMentions(me, channel, text);
         return;
       }
       case "topic": {
@@ -332,9 +338,7 @@ export function attachChat(
         if (topic.length > MAX_TOPIC_LENGTH) {
           return reject(me, "topic_too_long", String(MAX_TOPIC_LENGTH), `topic too long (max ${MAX_TOPIC_LENGTH})`);
         }
-        const secret = privates.get(channel);
-        if (secret !== undefined) secret.topic = topic;
-        const updated = secret === undefined ? store.setTopic(channel, topic).topic : topic;
+        const updated = store.setTopic(channel, topic).topic; // private rooms keep their topic too
         sendToChannel(channel, { type: "topic", channel, topic: updated, nick: me.nick });
         return;
       }
@@ -424,6 +428,54 @@ export function attachChat(
         people.delete(target.id);
         return;
       }
+      case "rooms": {
+        const rooms = [...store.listChannels().map((c) => c.name), ...store.roomsOf(who.id).filter((r) => isPrivate(r))]
+          .map((name) => store.room(name))
+          .filter((r) => r !== undefined)
+          .map((r) => ({
+            name: r.name,
+            topic: r.topic,
+            people: new Set(membersOf(r.name).filter((m) => m.who === who || visible(m)).map((m) => m.who)).size,
+            home: r.home,
+            private: r.private,
+          }));
+        send(me, { type: "rooms", rooms });
+        return;
+      }
+      case "home": {
+        // Home rooms: everyone is in them, new people too, and they reopen on every connection.
+        if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can choose the home rooms");
+        const channel = normaliseChannel(msg.channel);
+        const room = store.room(channel);
+        if (room === undefined || room.private) return reject(me, "no_such_channel", channel, `no public room ${channel}`);
+        if (channel === HOME_CHANNEL && !msg.on) return reject(me, "cant_delete_home", channel, `${channel} is always home`);
+        if (room.home === msg.on) return;
+        store.setHome(channel, msg.on);
+        const changed: ServerMessage = { type: "home", channel, on: msg.on, by: me.nick };
+        for (const m of members) send(m, changed);
+        if (msg.on) for (const m of [...members]) if (!m.channels.has(channel)) run(m, () => join(m, channel));
+        return;
+      }
+      case "delete_room": {
+        if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can delete a room");
+        const channel = normaliseChannel(msg.channel);
+        const room = store.room(channel);
+        if (room === undefined || (room.private && !store.isMember(who.id, channel))) {
+          return reject(me, "no_such_channel", channel, `no room ${channel}`);
+        }
+        if (room.home || channel === HOME_CHANNEL) return reject(me, "cant_delete_home", channel, `${channel} is a home room`);
+        const saved = store.messageCount(channel);
+        if (saved > 0 && !msg.confirm) return reject(me, "confirm_delete", String(saved), `${channel} has ${saved} messages`);
+        for (const m of membersOf(channel)) {
+          send(m, { type: "part", channel, nick: m.nick });
+          m.channels.delete(channel);
+          m.typingIn.delete(channel);
+        }
+        store.deleteRoom(channel);
+        const deleted: ServerMessage = { type: "room_deleted", channel, by: me.nick };
+        for (const m of members) send(m, deleted);
+        return;
+      }
       case "typing": {
         // Not saved, not logged, and never an error: it is only a hint, so anything odd is dropped.
         if ("to" in msg) {
@@ -507,11 +559,14 @@ export function attachChat(
     }
   }
 
-  // Joining creates the channel if it doesn't exist yet (anyone can create one).
-  // Private channels were checked and created by the caller; they have no row and no history.
+  // Joining creates the channel if it doesn't exist yet (anyone can create one), and remembers it
+  // for this person. Private rooms were checked (and created) by the caller; they have no history.
   function join(me: Member, channel: string): void {
-    const secret = privates.get(channel);
-    const topic = secret?.topic ?? store.createChannel(channel, new Date().toISOString()).topic;
+    const now = new Date().toISOString();
+    const room = store.room(channel) ?? store.createRoom(channel, now, false);
+    const secret = room.private;
+    const topic = room.topic;
+    if (!room.home) store.addMember(me.who.id, channel, now);
     // The others already in it see them arrive, unless they're already there on another device.
     if (visible(me) && !personIn(me.who, channel)) sendToChannel(channel, { type: "join", channel, nick: me.nick });
     me.channels.add(channel);
@@ -522,8 +577,8 @@ export function attachChat(
       channel,
       topic,
       members: [...listed.values()].map(info),
-      history: secret === undefined ? store.recentMessages(channel, HISTORY_LIMIT) : [],
-      private: secret !== undefined,
+      history: secret ? [] : store.recentMessages(channel, HISTORY_LIMIT),
+      private: secret,
     });
   }
 
@@ -531,7 +586,7 @@ export function attachChat(
   // A device's subscription follows its person: nick, public channels, and No biolo (= quiet).
   function syncPush(me: Member): void {
     if (me.push === undefined) return;
-    const channels = [...me.channels].filter((c) => !privates.has(c));
+    const channels = [...me.channels].filter((c) => !isPrivate(c));
     store.savePush({
       ...me.push,
       nick: me.nick,
@@ -606,12 +661,13 @@ export function attachChat(
     return null;
   }
 
-  // Called once a person is no longer in a private channel on any device. The last one out takes it along.
-  function forgetPrivate(channel: string, leaving: Someone): void {
-    const secret = privates.get(channel);
-    if (secret === undefined) return;
-    secret.invited.delete(leaving.id); // leaving means asking again to come back
-    if (membersOf(channel).every((m) => m.who === leaving)) privates.delete(channel);
+  const isPrivate = (channel: string): boolean => store.room(channel)?.private === true;
+
+  // /bazar on every device of theirs: the room no longer reopens for them (and a private room needs
+  // a new invite). The last member out of a private room takes it along.
+  function leaveRoom(channel: string, leaving: Someone): void {
+    store.removeMember(leaving.id, channel);
+    if (isPrivate(channel) && store.memberCount(channel) === 0 && membersOf(channel).length === 0) store.deleteRoom(channel);
   }
 
   // Someone online by nick (any case). Invisible people are not found, except by themselves.
@@ -793,7 +849,16 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
     case "make_invite":
     case "make_device_link":
     case "devices":
+    case "rooms":
       return { type: v.type };
+    case "home": {
+      const channel = str("channel");
+      return channel === undefined || typeof v.on !== "boolean" ? undefined : { type: "home", channel, on: v.on };
+    }
+    case "delete_room": {
+      const channel = str("channel");
+      return channel === undefined ? undefined : { type: "delete_room", channel, confirm: v.confirm === true };
+    }
     case "forget_device":
       return typeof v.id === "number" && Number.isInteger(v.id) ? { type: "forget_device", id: v.id } : undefined;
     case "role": {
