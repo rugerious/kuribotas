@@ -13,6 +13,7 @@ export type Parsed =
   | { kind: "colour"; colour?: RoomColour } // handled on this device; no colour = the next one
   | { kind: "lang"; lang: Lang } // handled on this device
   | { kind: "shake"; on: boolean } // handled on this device
+  | { kind: "joins"; on: boolean } // handled on this device: show (true) or hide the arrived/left lines
   | { kind: "theme"; theme: Theme } // handled on this device: escuro | claro | auto
   | { kind: "sound"; tornado: boolean; name?: string } // handled on this device; no name = list the options
   | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
@@ -39,6 +40,7 @@ const ALIASES: Record<string, string> = {
   "/abanar": "/nudge",
   "/abanoes": "/shake",
   "/tema": "/theme",
+  "/entradas": "/joins",
   "/abanões": "/shake",
   "/som": "/sound",
   "/m": "/msg",
@@ -202,6 +204,12 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (YES.includes(answer)) return { kind: "shake", on: true };
       if (NO.includes(answer)) return { kind: "shake", on: false };
       return usage(w.examples.shake);
+    }
+    case "/joins": {
+      const answer = firstWord.toLowerCase();
+      if (YES.includes(answer)) return { kind: "joins", on: true };
+      if (NO.includes(answer)) return { kind: "joins", on: false };
+      return usage(w.examples.joins);
     }
     case "/theme": {
       const theme = themeNamed(firstWord);

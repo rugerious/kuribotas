@@ -49,6 +49,7 @@ export type State = {
   nudged: { key: number; tornado: boolean } | null; // the last time someone shook me (the app shakes, buzzes, vibrates)
   thrown: { key: number; item: ThrowItem; atMe: boolean } | null; // the last thing flying across the open channel
   seq: number; // gives every line a unique key
+  quietJoins: boolean; // this device hides "chegou / saiu" lines in channels (/entradas nao)
 };
 
 export type Action =
@@ -61,7 +62,8 @@ export type Action =
   | { type: "colour"; channel: string; colour?: RoomColour; at: string } // no colour = the next one
   | { type: "lang"; lang: Lang; at: string }
   | { type: "tick"; at: string } // every second: "is typing" runs out
-  | { type: "visibility"; visible: boolean }; // the app went to the background, or came back
+  | { type: "visibility"; visible: boolean } // the app went to the background, or came back
+  | { type: "quietJoins"; on: boolean; at: string }; // hide (true) or show the arrived/left lines
 
 export const initialState: State = {
   lang: "pt",
@@ -77,6 +79,7 @@ export const initialState: State = {
   nudged: null,
   thrown: null,
   seq: 0,
+  quietJoins: false,
 };
 
 // #mujimbo is amber; other channels get a steady colour from their name until someone picks one.
@@ -133,6 +136,10 @@ export function reduce(state: State, action: Action): State {
       // Lines already on screen stay as they were; everything from now on is in the new language.
       const switched = { ...state, lang: action.lang };
       return addEvent(switched, switched.active, words(action.lang).events.lang, action.at, "info");
+    }
+    case "quietJoins": {
+      const next = { ...state, quietJoins: action.on };
+      return addEvent(next, next.active, words(state.lang).events.joins(!action.on), action.at, "info");
     }
     case "visibility": {
       const next = { ...state, visible: action.visible };
@@ -220,7 +227,8 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     case "join": {
       const arrived: Member = { nick: msg.nick, status: "online", note: "" };
       const next = updateRoom(state, msg.channel, (r) => ({ ...r, members: [...without(r, msg.nick).members, arrived] }));
-      return addEvent(next, msg.channel, w.events.joined(msg.nick, msg.channel), at, "info");
+      // A phone locking and unlocking comes and goes all day: on a quiet device only the list changes.
+      return state.quietJoins ? next : addEvent(next, msg.channel, w.events.joined(msg.nick, msg.channel), at, "info");
     }
 
     case "part": {
@@ -230,7 +238,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         return addEvent({ ...state, rooms, active }, active, w.events.youLeft(msg.channel), at, "info");
       }
       const next = updateRoom(state, msg.channel, (r) => without(r, msg.nick));
-      return addEvent(next, msg.channel, w.events.left(msg.nick, msg.channel), at, "info");
+      return state.quietJoins ? next : addEvent(next, msg.channel, w.events.left(msg.nick, msg.channel), at, "info");
     }
 
     case "quit": {
@@ -238,7 +246,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       if (state.rooms.some((r) => r.name === msg.nick)) next = addEvent(next, msg.nick, w.events.quit(msg.nick), at, "info");
       for (const room of state.rooms.filter((r) => hasMember(r, msg.nick))) {
         next = updateRoom(next, room.name, (r) => without(r, msg.nick));
-        next = addEvent(next, room.name, w.events.quit(msg.nick), at, "info");
+        if (!state.quietJoins) next = addEvent(next, room.name, w.events.quit(msg.nick), at, "info");
       }
       return next;
     }

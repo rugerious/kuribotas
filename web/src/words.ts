@@ -29,6 +29,10 @@ export type Words = {
     privateChannel: string; // after the topic of a private channel
     tornado: (nick: string) => string; // the 🌪️ button's label
     actions: { dm: string; nudge: string; tornado: string }; // short words beside the icons
+    complete: string; // the row of nicks offered while typing
+    tipsTab: string;
+    tipsIntro: string;
+    tipsTry: string; // on a tip with a command: tap to try it
     editNote: string; // the ✏️ button
     emoji: string; // the 😀 button
     hit: Record<ThrowItem, string>; // the big word when it lands
@@ -77,6 +81,7 @@ export type Words = {
     tornadoAll: (from: string, channel: string) => string;
     shake: (on: boolean) => string;
     theme: (theme: "escuro" | "claro" | "auto") => string;
+    joins: (shown: boolean) => string;
     sound: (name: string, tornado: boolean) => string;
     notify: (on: boolean) => string;
     notifyUnsupported: string;
@@ -102,11 +107,13 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
   help: readonly string[];
+  // The Dicas tab: practical help, a section at a time. A tip with `cmd` puts it in the box when tapped.
+  tips: readonly { title: string; items: readonly { text: string; cmd?: string }[] }[];
 };
 
 const pt: Words = {
@@ -148,6 +155,10 @@ const pt: Words = {
     privateChannel: "🔒 privado · não fica guardado",
     tornado: (nick) => `Mandar um tornado a ${nick}`,
     actions: { dm: "privado", nudge: "abanar", tornado: "tornado" },
+    complete: "Nicks parecidos",
+    tipsTab: "💡 Dicas",
+    tipsIntro: "Toca numa dica com comando e ela vai para a caixa da mensagem: é só experimentar.",
+    tipsTry: "toca para experimentar",
     editNote: "Mudar a tua frase",
     emoji: "Emoji da família",
     hit: { chinela: "PÁ!", vassoura: "XÔ!", colher: "TOC!", batuque: "TUM TUM TÁ!" },
@@ -221,6 +232,10 @@ const pt: Words = {
         claro: "Tema claro neste aparelho ☀️",
         auto: "Tema automático: segue o telemóvel (escuro à noite se o telemóvel estiver assim) 🌗",
       })[t],
+    joins: (shown) =>
+      shown
+        ? "As linhas de quem chega e sai voltam a aparecer neste aparelho"
+        : "Sem linhas de quem chega e sai neste aparelho 🤫 (a lista de Kambas continua certa; /entradas sim para voltar)",
     sound: (name, t) => `Som ${t ? "do tornado" : "do abanão"} neste aparelho: ${name} 🔊`,
     notify: (on) =>
       on
@@ -286,10 +301,68 @@ const pt: Words = {
     confirm_delete: (d) => `Essa sala tem ${d === "1" ? "1 mensagem" : `${d} mensagens`}, que se perde${d === "1" ? "" : "m"}. Para apagar mesmo: /apagar #sala sim`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
+  tips: [
+    {
+      title: "Conversar",
+      items: [
+        { text: "Para falar com alguém em especial, escreve as primeiras letras do nick e toca no nome que aparece." },
+        { text: "Uma acção em vez de uma frase: * Kota está a rir", cmd: "/me " },
+        { text: "Ver todas as salas, quem está lá e o tópico", cmd: "/salas" },
+        { text: "Entrar numa sala (se não existir, nasce)", cmd: "/join #" },
+        { text: "Esconder as linhas de quem chega e sai", cmd: "/entradas nao" },
+      ],
+    },
+    {
+      title: "O teu estado",
+      items: [
+        { text: "Toca no estado lá em cima: Na bardea, Já vorto, No biolo (sem som) ou A zongolar (invisível)." },
+        { text: "A tua frase debaixo do nome: toca no ✏️ ou escreve", cmd: "/frase " },
+      ],
+    },
+    {
+      title: "Abanões e arsenal",
+      items: [
+        { text: "Toca num nome em Kambas para privado, abanar ou tornado." },
+        { text: "Abanar a sala toda (uma vez por minuto)", cmd: "/abanar todos" },
+        { text: "Chinela, vassoura ou a Maria das Dores", cmd: "/chinela " },
+        { text: "Batuque para todos", cmd: "/batuque" },
+        { text: "Escolher o som do abanão neste telemóvel", cmd: "/som" },
+        { text: "Sem abanões neste aparelho", cmd: "/abanoes nao" },
+      ],
+    },
+    {
+      title: "Privado",
+      items: [
+        { text: "Conversa só com uma pessoa", cmd: "/msg " },
+        { text: "Uma sala privada (só entra quem convidares)", cmd: "/privado #" },
+        { text: "Convidar alguém para a sala privada aberta", cmd: "/invite " },
+      ],
+    },
+    {
+      title: "Telemóvel",
+      items: [
+        { text: "Instala a app: no Chrome, ⋮ → Adicionar ao ecrã principal; no iPhone, Partilhar → Adicionar ao ecrã principal." },
+        { text: "Nunca abras convites dentro do WhatsApp: toca em ⋮ → Abrir no Chrome (ou Safari)." },
+        { text: "Saber quando te chamam, mesmo com a app fechada", cmd: "/notificacoes sim" },
+        { text: "Escuro, claro ou igual ao telemóvel", cmd: "/tema auto" },
+        { text: "Saíste sem querer? Pede a um @ um código e mete-o na porta." },
+        { text: "Juntar o teu computador ou tablet", cmd: "/aparelho" },
+      ],
+    },
+    {
+      title: "Para @",
+      items: [
+        { text: "Convidar uma pessoa nova (link para uma pessoa, 7 dias)", cmd: "/convite" },
+        { text: "Alguém perdeu a entrada? Um código para essa pessoa", cmd: "/aparelho " },
+        { text: "Uma sala onde todos entram", cmd: "/principal #" },
+        { text: "Dar @ a alguém", cmd: "/op " },
+      ],
+    },
+  ],
   help: [
     "/nick <nome> — mudar o teu nick",
     "/join #canal — entrar num canal (se não existir, nasce)",
@@ -313,6 +386,7 @@ const pt: Words = {
     "/principal #sala — (@) sala onde todos entram 🏠 (/principal -#sala para tirar) · /apagar #sala — (@) apagar uma sala",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
     "/tema escuro | claro | auto — o aspecto deste aparelho (auto segue o telemóvel)",
+    "/entradas nao — esconder as linhas de quem chega e sai (/entradas sim para voltar)",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
   ],
@@ -349,6 +423,10 @@ const en: Words = {
     privateChannel: "🔒 private · not saved",
     tornado: (nick) => `Send ${nick} a tornado`,
     actions: { dm: "private", nudge: "nudge", tornado: "tornado" },
+    complete: "Matching nicks",
+    tipsTab: "💡 Tips",
+    tipsIntro: "Tap a tip with a command and it goes into the message box: just try it.",
+    tipsTry: "tap to try",
     editNote: "Change your note",
     emoji: "Family emoji",
     hit: { chinela: "SMACK!", vassoura: "SHOO!", colher: "BONK!", batuque: "BOOM BOOM TAK!" },
@@ -421,6 +499,10 @@ const en: Words = {
         claro: "Light theme on this device ☀️",
         auto: "Automatic theme: follows your phone's light or dark setting 🌗",
       })[t],
+    joins: (shown) =>
+      shown
+        ? "Arrived and left lines are back on this device"
+        : "No arrived and left lines on this device 🤫 (the people list stays right; /joins on to undo)",
     sound: (name, t) => `${t ? "Tornado" : "Nudge"} sound on this device: ${name} 🔊`,
     notify: (on) =>
       on
@@ -486,10 +568,68 @@ const en: Words = {
     confirm_delete: (d) => `that room has ${d === "1" ? "1 message" : `${d} messages`}, which will be lost. To delete it anyway: /delete #room yes`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
+  tips: [
+    {
+      title: "Chatting",
+      items: [
+        { text: "To talk to someone in particular, type the first letters of their nick and tap the name that appears." },
+        { text: "An action instead of a sentence: * Kota is laughing", cmd: "/me " },
+        { text: "Every room, who's in it and its topic", cmd: "/rooms" },
+        { text: "Join a room (it's created if it doesn't exist)", cmd: "/join #" },
+        { text: "Hide the arrived and left lines", cmd: "/joins off" },
+      ],
+    },
+    {
+      title: "Your status",
+      items: [
+        { text: "Tap the status at the top: Na bardea, Já vorto, No biolo (no sound) or A zongolar (invisible)." },
+        { text: "The line under your name: tap ✏️ or type", cmd: "/note " },
+      ],
+    },
+    {
+      title: "Nudges and the arsenal",
+      items: [
+        { text: "Tap a name in People for private, nudge or tornado." },
+        { text: "Nudge the whole room (once a minute)", cmd: "/nudge all" },
+        { text: "Slipper, broom or the wooden spoon", cmd: "/slipper " },
+        { text: "Drums for everyone", cmd: "/drums" },
+        { text: "Pick this phone's nudge sound", cmd: "/sound" },
+        { text: "No nudges on this device", cmd: "/shake off" },
+      ],
+    },
+    {
+      title: "Private",
+      items: [
+        { text: "Talk to one person only", cmd: "/msg " },
+        { text: "A private room (only people you invite)", cmd: "/private #" },
+        { text: "Invite someone to the open private room", cmd: "/invite " },
+      ],
+    },
+    {
+      title: "Phone",
+      items: [
+        { text: "Install the app: in Chrome, ⋮ → Add to Home screen; on iPhone, Share → Add to Home Screen." },
+        { text: "Never open invites inside WhatsApp: tap ⋮ → Open in Chrome (or Safari)." },
+        { text: "Know when someone calls you, even with the app closed", cmd: "/notifications on" },
+        { text: "Dark, light or like the phone", cmd: "/theme auto" },
+        { text: "Signed out by accident? Ask an @ for a code and enter it at the door." },
+        { text: "Add your computer or tablet", cmd: "/device" },
+      ],
+    },
+    {
+      title: "For @",
+      items: [
+        { text: "Invite a new person (a link for one person, 7 days)", cmd: "/invitelink" },
+        { text: "Someone lost their sign-in? A code for them", cmd: "/device " },
+        { text: "A room everyone joins", cmd: "/home #" },
+        { text: "Give someone @", cmd: "/op " },
+      ],
+    },
+  ],
   help: [
     "/nick <name> — change your nick",
     "/join #channel — join a channel (creates it if it doesn't exist)",
@@ -513,6 +653,7 @@ const en: Words = {
     "/home #room — (@) a room everyone joins 🏠 (/home -#room to take it off) · /delete #room — (@) delete a room",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
     "/theme dark | light | auto — this device's look (auto follows the phone)",
+    "/joins off — hide the arrived and left lines (/joins on to undo)",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",
   ],
