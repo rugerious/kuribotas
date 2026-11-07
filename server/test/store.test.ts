@@ -246,3 +246,30 @@ test("messages older than a date can be deleted; newer ones stay", () => {
   assert.equal(store.deleteMessagesBefore(at(10)), 0);
   store.close();
 });
+
+test("private messages: kept per pair of people, newest partners first, gone after their own cut-off", () => {
+  const store = openStore(":memory:");
+  for (const [i, nick] of ["Kota", "Kamba", "Primo"].entries()) {
+    store.createInvite(`p${i}`, { kind: "person", personId: null, role: "member", createdBy: null, expiresAt: later }, at(0));
+    store.redeem(`p${i}`, nick, `s${i}`, "", at(0));
+  }
+  store.addDirect(1, 2, "say", "olá Kamba", at(1));
+  store.addDirect(2, 1, "me", "acena", at(2));
+  store.addDirect(3, 1, "say", "primo aqui", at(20));
+  assert.deepEqual(store.directBetween(2, 1, 10).map((m) => [m.from, m.to, m.kind, m.text]), [
+    ["Kota", "Kamba", "say", "olá Kamba"],
+    ["Kamba", "Kota", "me", "acena"],
+  ]);
+  assert.deepEqual(store.directPartners(1, at(0), 5), ["Primo", "Kamba"]);
+  assert.deepEqual(store.directPartners(1, at(10), 5), ["Primo"]);
+  assert.deepEqual(store.directBetween(2, 3, 10), []);
+  // A private room's messages go with the private cut-off; public channels keep theirs.
+  store.createRoom("#primos", at(0), true);
+  store.addMessage(say("#primos", "segredo velho", 1));
+  store.addMessage(say("#mujimbo", "conversa velha", 1));
+  assert.equal(store.deletePrivateBefore(at(10)), 3); // 1 in #primos + 2 direct
+  assert.deepEqual(store.recentMessages("#primos", 10), []);
+  assert.deepEqual(store.recentMessages("#mujimbo", 10).map((m) => m.text), ["conversa velha"]);
+  assert.deepEqual(store.directPartners(1, at(0), 5), ["Primo"]);
+  store.close();
+});

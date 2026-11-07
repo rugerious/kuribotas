@@ -61,6 +61,9 @@ class Member {
 
 const HOME_CHANNEL = "#mujimbo"; // where the app opens (and the first home room)
 const HISTORY_LIMIT = 50; // messages sent when joining a channel
+const DM_HISTORY_LIMIT = 100; // private messages sent when a private chat tab opens
+const DM_TABS_DAYS = 3; // private chats with messages this recent reopen as tabs on arrival
+const DM_TABS_MAX = 6;
 const MAX_TEXT_LENGTH = 2000; // characters per chat message
 const MAX_TOPIC_LENGTH = 200; // characters per topic
 const MAX_NOTE_LENGTH = 80; // characters in the line under your name
@@ -172,7 +175,9 @@ export function attachChat(
       me.alive = true;
     });
     members.add(me);
-    send(me, { type: "welcome", nick: me.nick, role: who.role, channels: store.listChannels() });
+    // Private chats with messages in the last days reopen as tabs (a closed app doesn't lose them).
+    const dms = store.directPartners(who.id, new Date(Date.now() - DM_TABS_DAYS * 86_400_000).toISOString(), DM_TABS_MAX);
+    send(me, { type: "welcome", nick: me.nick, role: who.role, channels: store.listChannels(), dms });
     // Home rooms (everyone's) first, then this person's own rooms, private ones included.
     run(me, () => {
       for (const room of new Set([HOME_CHANNEL, ...store.homeRooms(), ...store.roomsOf(who.id)])) {
@@ -288,16 +293,25 @@ export function attachChat(
         return;
       }
       case "msg": {
-        // Not saved, not logged: it goes to the other person (and back to the sender) and nowhere else.
-        // Invisible people can't be found, but may write to someone (that is their choice to show up).
+        // Kept 3 days (the family's choice), never logged: saved first, then to the other person's
+        // devices and back to mine. Anyone with an account can get one, online or not, so writing to
+        // someone invisible looks exactly like writing to someone away.
         const text = msg.text.trim();
         if (text.length === 0 || text.length > MAX_TEXT_LENGTH) return;
-        const target = findVisible(msg.to, me);
+        const target = store.personByNick(msg.to.trim());
         if (target === undefined) return reject(me, "no_such_nick", msg.to.trim(), `nobody called ${msg.to.trim()}`);
         if (tooFast(me)) return;
-        const dm: ServerMessage = { type: "dm", from: me.nick, to: target.nick, kind: msg.kind, text, at: new Date().toISOString() };
-        sendPerson(target.who, dm); // every device of theirs, and of mine
-        if (target.who !== who) sendPerson(who, dm);
+        const saved = store.addDirect(who.id, target.id, msg.kind, text, new Date().toISOString());
+        const dm: ServerMessage = { type: "dm", ...saved };
+        const them = people.get(target.id);
+        if (them !== undefined) sendPerson(them, dm); // every device of theirs that is online…
+        if (them !== who) sendPerson(who, dm); // …and of mine
+        return;
+      }
+      case "dm_history": {
+        const other = store.personByNick(msg.with.trim());
+        if (other === undefined) return reject(me, "no_such_nick", msg.with.trim(), `nobody called ${msg.with.trim()}`);
+        send(me, { type: "dm_history", with: other.nick, messages: store.directBetween(who.id, other.id, DM_HISTORY_LIMIT) });
         return;
       }
       case "part": {
@@ -322,10 +336,10 @@ export function attachChat(
         if (tooFast(me)) return;
         // Saved first: if this throws, nothing is broadcast (not saved = not delivered).
         // Speaking while invisible is allowed: the message shows, the person stays out of the list.
-        // Private rooms' messages are not saved: they get id 0.
+        // Private rooms' messages are saved too (kept 3 days instead of 90), but never notified.
         const said = { channel, nick: me.nick, kind: msg.type, text, at: new Date().toISOString() };
         const secret = isPrivate(channel);
-        const saved = secret ? { id: 0, ...said } : store.addMessage(said);
+        const saved = store.addMessage(said);
         me.typingIn.delete(channel); // the others clear "is typing" when the message arrives
         sendToChannel(channel, { type: "message", ...saved });
         if (!secret) notifyMentions(me, channel, text);
@@ -588,7 +602,7 @@ export function attachChat(
       channel,
       topic,
       members: [...listed.values()].map(info),
-      history: secret ? [] : store.recentMessages(channel, HISTORY_LIMIT),
+      history: store.recentMessages(channel, HISTORY_LIMIT),
       private: secret,
     });
   }
@@ -893,6 +907,10 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
         return undefined;
       }
       return { type: "push", subscription: { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } }, lang };
+    }
+    case "dm_history": {
+      const other = str("with");
+      return other === undefined ? undefined : { type: "dm_history", with: other };
     }
     case "msg": {
       const to = str("to");

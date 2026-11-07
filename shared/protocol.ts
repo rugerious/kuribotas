@@ -80,7 +80,8 @@ export type ClientMessage =
   | { type: "nudge"; channel: string; nick: string; tornado: boolean } // shake someone's screen (/abanar, /tornado)
   | { type: "nudge"; channel: string; everyone: true; tornado: boolean } // the whole channel (/abanar todos)
   | { type: "nudge"; to: string; tornado: boolean } // in a private chat, MSN style
-  | { type: "msg"; to: string; kind: MessageKind; text: string } // a private message (/msg Kota olá)
+  | { type: "msg"; to: string; kind: MessageKind; text: string } // a private message (/msg Kota olá), kept 3 days
+  | { type: "dm_history"; with: string } // the saved private messages with this person (a private chat tab opened)
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
@@ -117,7 +118,7 @@ export type ApiError = {
 
 // What the server sends.
 export type ServerMessage =
-  | { type: "welcome"; nick: string; role: Role; channels: Channel[] }
+  | { type: "welcome"; nick: string; role: Role; channels: Channel[]; dms?: string[] } // dms: people with recent private messages (their tabs reopen)
   | { type: "joined"; channel: string; topic: string; members: Member[]; history: ChatMessage[]; private: boolean }
   | { type: "join"; channel: string; nick: string } // arrives as online with no note; a presence may follow
   | { type: "part"; channel: string; nick: string }
@@ -132,7 +133,8 @@ export type ServerMessage =
   | ({ type: "message" } & ChatMessage) // in a private channel: not saved, id 0
   // Nothing private is saved yet (phase 4b turns it on): DMs and private channels live in memory
   // only, and reach only people online right now.
-  | { type: "dm"; from: string; to: string; kind: MessageKind; text: string; at: string } // to both sides
+  | { type: "dm"; id: number; from: string; to: string; kind: MessageKind; text: string; at: string } // to both sides
+  | { type: "dm_history"; with: string; messages: { id: number; from: string; to: string; kind: MessageKind; text: string; at: string }[] }
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
   // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").

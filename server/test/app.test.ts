@@ -480,13 +480,14 @@ test("a group nudge shakes everyone in the channel; once a minute, group tornado
   b.c.ws.close();
 });
 
-test("a DM reaches only the other person and comes back to the sender; nothing is saved", limits, async () => {
+test("a DM reaches only the other person and comes back to the sender; it's kept for the two of them only", limits, async () => {
   const a = await arrive();
   const b = await arrive();
   const c = await arrive();
   send(a.c, { type: "msg", to: b.nick.toUpperCase(), kind: "say", text: " só para ti " });
   const got = await until(b.c, ofType("dm"));
-  assert.deepEqual({ ...got, at: "" }, { type: "dm", from: a.nick, to: b.nick, kind: "say", text: "só para ti", at: "" });
+  assert.equal(typeof got.id, "number");
+  assert.deepEqual({ ...got, at: "", id: 0 }, { type: "dm", id: 0, from: a.nick, to: b.nick, kind: "say", text: "só para ti", at: "" });
   assert.equal((await until(a.c, ofType("dm"))).text, "só para ti");
   // c gets nothing: its next real message is the marker.
   send(b.c, { type: "say", channel: "#mujimbo", text: "marker-dm" });
@@ -496,44 +497,53 @@ test("a DM reaches only the other person and comes back to the sender; nothing i
   const texts = (d.joined.history as { text: string }[]).map((m) => m.text);
   assert.ok(texts.includes("marker-dm"));
   assert.ok(!texts.includes("só para ti"));
+  // Saved for the two of them: either side gets it back, in order; anyone else's thread with a is empty.
+  send(b.c, { type: "dm_history", with: a.nick.toLowerCase() });
+  const saved = await until(b.c, ofType("dm_history"));
+  assert.equal(saved.with, a.nick);
+  assert.deepEqual((saved.messages as { from: string; text: string }[]).map((m) => [m.from, m.text]), [[a.nick, "só para ti"]]);
+  send(c.c, { type: "dm_history", with: a.nick });
+  assert.deepEqual((await until(c.c, ofType("dm_history"))).messages, []);
   for (const x of [a, b, c, d]) x.c.ws.close();
 });
 
-test("a DM to nobody or to an invisible person gets the same answer; invisible people may write", limits, async () => {
+test("a DM to nobody is refused; to someone invisible or away it is kept, like any other", limits, async () => {
   const a = await arrive();
   const b = await arrive();
   send(a.c, { type: "msg", to: "Ninguém", kind: "say", text: "olá" });
   assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", "Ninguém"]);
   send(b.c, { type: "status", status: "invisible", note: "" });
   await until(a.c, (m) => m.type === "quit" && m.nick === b.nick);
+  // Invisible looks exactly like away: the message is kept and comes back to the sender.
   send(a.c, { type: "msg", to: b.nick, kind: "say", text: "estás aí?" });
-  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["no_such_nick", b.nick]);
+  assert.equal((await until(a.c, ofType("dm"))).text, "estás aí?");
+  assert.equal((await until(b.c, ofType("dm"))).text, "estás aí?"); // they're there, just unseen
   send(b.c, { type: "msg", to: a.nick, kind: "me", text: "aparece de surpresa" });
   assert.equal((await until(a.c, ofType("dm"))).kind, "me");
   a.c.ws.close();
   b.c.ws.close();
 });
 
-test("a private channel is hidden, invite-only, and its messages are never saved", limits, async () => {
+test("a private channel is hidden, invite-only, and its messages are kept for its members", limits, async () => {
   const a = await arrive();
   const b = await arrive();
   send(a.c, { type: "join", channel: "#Primos", private: true });
   const joined = await until(a.c, (m) => m.type === "joined" && m.channel === "#primos");
   assert.equal(joined.private, true);
   send(a.c, { type: "say", channel: "#primos", text: "segredo" });
-  assert.equal((await until(a.c, ofType("message"))).id, 0);
+  assert.ok(Number((await until(a.c, ofType("message"))).id) > 0);
   // An outsider doesn't see it in the list and can't get in.
   const c = await arrive();
   assert.ok(!(c.welcome.channels as { name: string }[]).some((ch) => ch.name === "#primos"));
   send(c.c, { type: "join", channel: "#primos" });
   assert.deepEqual(pick(await until(c.c, ofType("error"))), ["invite_only", "#primos"]);
-  // An invite lets b in, with an empty history (nothing was saved).
+  // An invite lets b in, and they see what was said before.
   send(a.c, { type: "invite", channel: "#primos", nick: b.nick });
   assert.deepEqual(await until(b.c, ofType("invited")), { type: "invited", channel: "#primos", from: a.nick, to: b.nick });
   assert.equal((await until(a.c, ofType("invited"))).to, b.nick);
   send(b.c, { type: "join", channel: "#primos" });
   const inside = await until(b.c, (m) => m.type === "joined" && m.channel === "#primos");
-  assert.deepEqual(inside.history, []);
+  assert.deepEqual((inside.history as { text: string }[]).map((m) => m.text), ["segredo"]);
   send(a.c, { type: "invite", channel: "#primos", nick: b.nick });
   assert.equal((await until(a.c, ofType("error"))).code, "already_in_channel");
   for (const x of [a, b, c]) x.c.ws.close();
