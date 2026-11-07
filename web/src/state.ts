@@ -168,13 +168,11 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     case "welcome": {
       const next: State = { ...state, nick: msg.nick, known: msg.channels };
       if (state.rooms.length === 0) return next;
-      // Back after a dropped connection: the app joins its channels again. Private channels can't be
-      // rejoined (the invite belonged to the old connection), so their tabs close with a note.
-      const lost = state.rooms.filter((r) => r.private && !isDm(r.name));
-      const rooms = state.rooms.filter((r) => !lost.includes(r)).map((r) => ({ ...r, typing: [] }));
+      // Back after a dropped connection: the server reopens this person's rooms (private ones too),
+      // so every tab stays where it was.
+      const rooms = state.rooms.map((r) => ({ ...r, typing: [] }));
       const active = rooms.some((r) => r.name === state.active) ? state.active : (rooms[0]?.name ?? HOME_CHANNEL);
-      const back: State = { ...next, rooms, active };
-      return lost.length === 0 ? back : addEvent(back, active, w.events.lostPrivate(lost.map((r) => r.name).join(" ")), at, "info");
+      return { ...next, rooms, active };
     }
 
     case "joined": {
@@ -394,8 +392,23 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       return rooms.length > 0 ? next : addEvent(next, state.active, w.events.removed(msg.nick, msg.by), at, "info");
     }
 
+    case "home": {
+      const line = w.events.home(msg.by, msg.channel, msg.on);
+      const where = state.rooms.some((r) => r.name === msg.channel) ? msg.channel : state.active;
+      return addEvent(state, where, line, at, "info");
+    }
+
+    case "room_deleted": {
+      // Its tab closes (the server already took everyone out); the note goes to the open tab.
+      const rooms = state.rooms.filter((r) => r.name !== msg.channel);
+      const active = state.active === msg.channel ? (rooms[0]?.name ?? HOME_CHANNEL) : state.active;
+      const known = state.known.filter((c) => c.name !== msg.channel);
+      return addEvent({ ...state, rooms, active, known }, active, w.events.roomDeleted(msg.channel, msg.by), at, "info");
+    }
+
     case "link":
     case "devices":
+    case "rooms":
       return state; // shown by the app, which knows this page's address and the date format
 
     case "error": {

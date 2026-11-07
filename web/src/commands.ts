@@ -54,6 +54,10 @@ const ALIASES: Record<string, string> = {
   "/devices": "/aparelhos",
   "/logout": "/xau",
   "/kick": "/expulsar",
+  "/rooms": "/salas",
+  "/list": "/salas",
+  "/home": "/principal",
+  "/delete": "/apagar",
   "/remove": "/expulsar",
   "/notificacoes": "/notifications",
   "/notificações": "/notifications",
@@ -171,6 +175,18 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
         : usage(command === "/op" ? w.examples.op : w.examples.deop);
     case "/expulsar":
       return firstWord ? send({ type: "remove", nick: firstWord }) : usage(w.examples.remove);
+    case "/salas":
+      return send({ type: "rooms" });
+    case "/principal": {
+      // "/principal #angola" adds a home room, "/principal -#angola" takes it off.
+      if (!firstWord || firstWord === "-") return usage(w.examples.home);
+      const off = firstWord.startsWith("-");
+      return send({ type: "home", channel: withHash(off ? firstWord.slice(1) : firstWord), on: !off });
+    }
+    case "/apagar": {
+      const sure = (rest.split(/\s+/)[1] ?? "").toLowerCase();
+      return firstWord ? send({ type: "delete_room", channel: withHash(firstWord), confirm: YES.includes(sure) }) : usage(w.examples.delete);
+    }
     case "/notifications": {
       const answer = firstWord.toLowerCase();
       if (YES.includes(answer)) return { kind: "notify", on: true };

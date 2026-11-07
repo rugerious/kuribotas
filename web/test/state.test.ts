@@ -376,15 +376,20 @@ test("rejoining keeps the screen and adds only the messages missed meanwhile", (
   assert.equal(back.rooms.length, 1);
 });
 
-test("after a reconnection, private channel tabs close with a note; private chats stay", () => {
+test("after a reconnection every tab stays (the server reopens private rooms too); a deleted room's tab closes", () => {
   let s = apply(arrived(), { type: "joined", private: true, channel: "#primos", topic: "", members: [online("Guest-1")], history: [] });
   s = reduce(s, { type: "openDm", nick: "Pai" });
   s = apply(s, { type: "welcome", role: "member", nick: "Guest-1", channels: [{ name: "#mujimbo", topic: "dinner" }] });
   assert.deepEqual(
     s.rooms.map((r) => r.name),
+    ["#mujimbo", "#primos", "Pai"],
+  );
+  s = apply(s, { type: "room_deleted", channel: "#primos", by: "Mais_Velho" });
+  assert.deepEqual(
+    s.rooms.map((r) => r.name),
     ["#mujimbo", "Pai"],
   );
-  assert.equal(texts(s.rooms.find((r) => r.name === s.active)?.lines ?? []).at(-1), "*** You left #primos when the connection dropped 🔒 ask for a new invite");
+  assert.equal(texts(s.rooms.find((r) => r.name === s.active)?.lines ?? []).at(-1), "*** #primos was deleted by Mais_Velho");
 });
 
 test("while the app is in the background, messages in the open tab count as unread too", () => {

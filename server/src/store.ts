@@ -49,10 +49,25 @@ export type RedeemResult =
   | { ok: true; person: Person }
   | { ok: false; error: "invite_unknown" | "invite_used" | "invite_expired" | "invalid_nick" | "nick_taken" };
 
+// A room as the server sees it. Private rooms (🔒) are saved too, but hidden from the list and
+// with no saved messages; home rooms are the ones everyone is in.
+export type Room = { name: string; topic: string; private: boolean; home: boolean };
+
 export type Store = {
   getChannel: (name: string) => Channel | undefined;
   createChannel: (name: string, at: string) => Channel; // returns the existing one if it already exists
-  listChannels: () => Channel[];
+  listChannels: () => Channel[]; // public ones (private rooms are hidden)
+  room: (name: string) => Room | undefined; // any room, with its kind
+  createRoom: (name: string, at: string, isPrivate: boolean) => Room;
+  homeRooms: () => string[]; // everyone is in these
+  setHome: (name: string, home: boolean) => void;
+  addMember: (personId: number, room: string, at: string) => void;
+  removeMember: (personId: number, room: string) => void;
+  isMember: (personId: number, room: string) => boolean;
+  roomsOf: (personId: number) => string[]; // the rooms this person reopens on every connection
+  memberCount: (room: string) => number;
+  messageCount: (room: string) => number;
+  deleteRoom: (name: string) => void; // with its messages and memberships
   setTopic: (name: string, topic: string) => Channel;
   addMessage: (msg: NewMessage) => StoredMessage;
   recentMessages: (channel: string, limit: number) => StoredMessage[];
@@ -162,6 +177,20 @@ export const MIGRATIONS: readonly string[] = [
   -- v5: which device (session) asked for notifications, so signing a lost phone out silences it too.
   ALTER TABLE push_subscriptions ADD COLUMN session_hash TEXT NOT NULL DEFAULT '';
   `,
+  `
+  -- v6: rooms that stay. Private rooms are saved (hidden, no messages); home rooms are joined by
+  -- everyone; memberships say which rooms a person reopens on every connection (and, for a private
+  -- room, who may come in).
+  ALTER TABLE channels ADD COLUMN private INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE channels ADD COLUMN home INTEGER NOT NULL DEFAULT 0;
+  UPDATE channels SET home = 1 WHERE name = '#mujimbo';
+  CREATE TABLE memberships (
+    person_id  INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+    channel_id INTEGER NOT NULL REFERENCES channels (id) ON DELETE CASCADE,
+    joined_at  TEXT NOT NULL,
+    PRIMARY KEY (person_id, channel_id)
+  );
+  `,
 ];
 
 // Nicks: 1-24 letters (any language), digits or _-~*^.|[]{} — so "~*~Rita~*~" works, spaces don't.
@@ -179,12 +208,41 @@ export function openStore(path: string): Store {
   // Prepared once, reused for every call. Values are bound, never glued into SQL (no injection).
   // One space ("home") for now, so channels are looked up by name.
   const selectChannel = db.prepare("SELECT name, topic FROM channels WHERE name = :name");
-  const selectChannels = db.prepare("SELECT name, topic FROM channels ORDER BY name");
+  const selectChannels = db.prepare("SELECT name, topic FROM channels WHERE private = 0 ORDER BY name");
   const insertChannel = db.prepare(`
-    INSERT INTO channels (space_id, name, created_at)
-    SELECT id, :name, :at FROM spaces WHERE name = 'home'
+    INSERT INTO channels (space_id, name, created_at, private)
+    SELECT id, :name, :at, :private FROM spaces WHERE name = 'home'
     ON CONFLICT (space_id, name) DO NOTHING
   `);
+  const selectRoom = db.prepare("SELECT name, topic, private, home FROM channels WHERE name = :name");
+  const selectHomes = db.prepare("SELECT name FROM channels WHERE home = 1 ORDER BY id");
+  const updateHome = db.prepare("UPDATE channels SET home = :home WHERE name = :name AND private = 0");
+  const insertMember = db.prepare(`
+    INSERT INTO memberships (person_id, channel_id, joined_at)
+    SELECT :personId, id, :at FROM channels WHERE name = :room
+    ON CONFLICT (person_id, channel_id) DO NOTHING
+  `);
+  const removeMembership = db.prepare(
+    "DELETE FROM memberships WHERE person_id = :personId AND channel_id = (SELECT id FROM channels WHERE name = :room)",
+  );
+  const selectMember = db.prepare(`
+    SELECT 1 AS yes FROM memberships m JOIN channels c ON c.id = m.channel_id
+    WHERE m.person_id = :personId AND c.name = :room
+  `);
+  const selectRoomsOf = db.prepare(`
+    SELECT c.name AS name FROM memberships m JOIN channels c ON c.id = m.channel_id
+    WHERE m.person_id = :personId ORDER BY m.joined_at
+  `);
+  const countMembers = db.prepare(
+    "SELECT count(*) AS n FROM memberships WHERE channel_id = (SELECT id FROM channels WHERE name = :room)",
+  );
+  const countMessages = db.prepare(
+    "SELECT count(*) AS n FROM messages WHERE channel_id = (SELECT id FROM channels WHERE name = :room)",
+  );
+  const removeRoomMessages = db.prepare(
+    "DELETE FROM messages WHERE channel_id = (SELECT id FROM channels WHERE name = :room)",
+  );
+  const removeRoom = db.prepare("DELETE FROM channels WHERE name = :room");
   const updateTopic = db.prepare(
     "UPDATE channels SET topic = :topic WHERE name = :name RETURNING name, topic",
   );
@@ -274,12 +332,47 @@ export function openStore(path: string): Store {
   return {
     getChannel,
     createChannel: (name, at) => {
-      insertChannel.run({ name, at }); // does nothing if it already exists (safe if two people race)
+      insertChannel.run({ name, at, private: 0 }); // does nothing if it already exists (safe if two people race)
       const channel = getChannel(name);
       if (channel === undefined) throw new Error(`could not create channel: ${name}`);
       return channel;
     },
     listChannels: () => selectChannels.all().map((row) => toChannel(row)),
+    room: (name) => {
+      const row = selectRoom.get({ name });
+      return row === undefined ? undefined : toRoom(row);
+    },
+    createRoom: (name, at, isPrivate) => {
+      insertChannel.run({ name, at, private: isPrivate ? 1 : 0 });
+      const row = selectRoom.get({ name });
+      if (row === undefined) throw new Error(`could not create room: ${name}`);
+      return toRoom(row);
+    },
+    homeRooms: () => selectHomes.all().map((row) => String(row.name)),
+    setHome: (name, home) => {
+      updateHome.run({ name, home: home ? 1 : 0 });
+    },
+    addMember: (personId, room, at) => {
+      insertMember.run({ personId, room, at });
+    },
+    removeMember: (personId, room) => {
+      removeMembership.run({ personId, room });
+    },
+    isMember: (personId, room) => selectMember.get({ personId, room }) !== undefined,
+    roomsOf: (personId) => selectRoomsOf.all({ personId }).map((row) => String(row.name)),
+    memberCount: (room) => Number(countMembers.get({ room })?.n ?? 0),
+    messageCount: (room) => Number(countMessages.get({ room })?.n ?? 0),
+    deleteRoom: (room) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        removeRoomMessages.run({ room });
+        removeRoom.run({ room }); // memberships go with it (foreign key)
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+    },
     setTopic: (name, topic) => {
       const row = updateTopic.get({ name, topic });
       if (row === undefined) throw new Error(`unknown channel: ${name}`);
@@ -430,6 +523,10 @@ function toMessage(row: Record<string, unknown>): StoredMessage {
     text: String(row.text),
     at: String(row.at),
   };
+}
+
+function toRoom(row: Record<string, unknown>): Room {
+  return { name: String(row.name), topic: String(row.topic), private: Number(row.private) === 1, home: Number(row.home) === 1 };
 }
 
 function toPerson(row: Record<string, unknown>): Person {

@@ -60,6 +60,9 @@ export type ErrorCode =
   | "cant_deop_self" // another @ has to do it
   | "no_such_device" // not one of your devices (detail = the id)
   | "too_fast" // more than 20 messages in 10 s; detail = seconds to wait
+  | "no_such_channel" // no room with that name (detail = the name)
+  | "cant_delete_home" // a home room can't be deleted (take it off the home list first)
+  | "confirm_delete" // the room has messages: say it again with confirm (detail = how many)
   | "internal";
 
 // What a client may send. The web UI turns "/nick Rita", "/join #futebol", "/me waves",
@@ -87,7 +90,10 @@ export type ClientMessage =
   | { type: "devices" } // list your devices (/aparelhos)
   | { type: "forget_device"; id: number } // sign one of your devices out (/xau 2)
   | { type: "role"; nick: string; role: Role } // an @ gives or takes @ (/op, /deop)
-  | { type: "remove"; nick: string }; // an @ removes someone from Kuribotas (/expulsar)
+  | { type: "remove"; nick: string } // an @ removes someone from Kuribotas (/expulsar)
+  | { type: "rooms" } // the list of rooms (/salas)
+  | { type: "home"; channel: string; on: boolean } // an @ adds or takes a home room (/principal)
+  | { type: "delete_room"; channel: string; confirm: boolean }; // an @ deletes a room (/apagar)
 
 
 // The small HTTP API around the chat. GET /api/me: who this device is signed in as.
@@ -134,4 +140,8 @@ export type ServerMessage =
   | { type: "devices"; devices: Device[] } // only to you
   | { type: "role"; nick: string; role: Role; by: string } // to everyone: someone got or lost @
   | { type: "removed"; nick: string; by: string } // to everyone: an @ removed someone
+  // Only to you: the public rooms, and the private ones you're in. `people` = how many are in it now.
+  | { type: "rooms"; rooms: { name: string; topic: string; people: number; home: boolean; private: boolean }[] }
+  | { type: "home"; channel: string; on: boolean; by: string } // to everyone: a home room was added or taken
+  | { type: "room_deleted"; channel: string; by: string } // to everyone: an @ deleted a room
   | { type: "error"; code: ErrorCode; detail: string; reason: string };
