@@ -26,3 +26,5 @@ file="kuribotas-$stamp.tgz"
 tar czf "$work/$file" -C "$work" data
 aws s3 cp "$work/$file" "s3://$bucket/daily/$file" --region "$region" --only-show-errors
 echo "backup ok: daily/$file ($(du -h "$work/$file" | cut -f1))" # sizes and names only: never the content
+# The "still alive" sign for the alarm in infra/server/alerts.tf: no sign for 26 h = an email.
+aws cloudwatch put-metric-data --region "$region" --namespace Kuribotas --metric-name BackupOk --value 1 --unit Count

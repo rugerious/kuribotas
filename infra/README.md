@@ -37,6 +37,19 @@ curl -sI https://<domain>/main.js | grep -i cache-control   # must say no-cache 
 
 The tunnel keeps running; the app restarts in a few seconds and every client reconnects on its own.
 
+## Backup alert
+
+`alerts.tf` is a dead man's switch: after each backup that reached S3, `backup.sh` sends one data point
+(namespace `Kuribotas`, metric `BackupOk`). If none arrives for 26 hours (the backup failed or the server
+was off), the alarm `kuribotas-backup-missing` emails `alert_email` through the SNS topic
+`kuribotas-alerts`, and emails again when backups are back. AWS first sends a confirmation email: nothing
+arrives until "Confirm subscription" is clicked. To see the email work:
+
+```bash
+aws cloudwatch set-alarm-state --alarm-name kuribotas-backup-missing --state-value ALARM --state-reason "test"
+aws cloudwatch set-alarm-state --alarm-name kuribotas-backup-missing --state-value OK --state-reason "test over"
+```
+
 ## Load test
 
 `deploy.sh` installs `/opt/kuribotas/loadtest.sh`. It starts a **throwaway copy** of the running image
