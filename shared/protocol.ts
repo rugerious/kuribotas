@@ -24,6 +24,7 @@ export type Status = "online" | "away" | "busy" | "invisible";
 
 // Things the family throws at each other (and the batuque, which is for everyone). Shown, never saved.
 export type ThrowItem = "chinela" | "vassoura" | "colher" | "batuque";
+export type Club = "benfica" | "porto" | "sporting" | "madrid" | "barca"; // /bandeira: a giant flag in the club's colours
 
 export type Member = {
   nick: string;
@@ -50,6 +51,7 @@ export type ErrorCode =
   | "invisible_no_nudge" // nudging (or throwing a chinela) would give you away
   | "throw_too_soon" // detail = seconds to wait
   | "batuque_too_soon" // detail = seconds to wait
+  | "cheer_too_soon" // one /bandeira every 20 s; detail = seconds to wait
   | "invite_only" // a private channel: ask a member for /invite
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
@@ -84,6 +86,7 @@ export type ClientMessage =
   | { type: "dm_history"; with: string } // the saved private messages with this person (a private chat tab opened)
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
+  | { type: "cheer"; channel: string; club: Club } // /bandeira benfica
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
   | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" }
   | { type: "make_invite" } // an @ makes an invite link for a new person (/convite)
@@ -137,6 +140,7 @@ export type ServerMessage =
   | { type: "dm_history"; with: string; messages: { id: number; from: string; to: string; kind: MessageKind; text: string; at: string }[] }
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
+  | { type: "cheer"; channel: string; from: string; club: Club } // a club's flag waves across everyone's screen; not saved
   // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").
   | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string; for?: string } // for = whose device code an @ made
   | { type: "devices"; devices: Device[] } // only to you

@@ -1,5 +1,6 @@
 import type { ClientMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { isDm, ROOM_COLOURS, type RoomColour } from "./state.ts";
+import { clubNamed } from "./cheer.ts";
 import { themeNamed, type Theme } from "./theme.ts";
 import { isLang, words, type Lang } from "./words.ts";
 
@@ -41,6 +42,7 @@ const ALIASES: Record<string, string> = {
   "/abanoes": "/shake",
   "/tema": "/theme",
   "/entradas": "/joins",
+  "/flag": "/bandeira",
   "/abanões": "/shake",
   "/som": "/sound",
   "/m": "/msg",
@@ -69,7 +71,7 @@ const ALIASES: Record<string, string> = {
 };
 
 // In a private chat these make no sense (they belong to channels).
-const CHANNEL_ONLY = ["/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque"];
+const CHANNEL_ONLY = ["/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque", "/bandeira"];
 
 // The family's arsenal, in both languages.
 const THROWS: Record<string, ThrowItem> = {
@@ -204,6 +206,10 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (YES.includes(answer)) return { kind: "shake", on: true };
       if (NO.includes(answer)) return { kind: "shake", on: false };
       return usage(w.examples.shake);
+    }
+    case "/bandeira": {
+      const club = clubNamed(rest);
+      return club ? send({ type: "cheer", channel, club }) : usage(w.examples.cheer);
     }
     case "/joins": {
       const answer = firstWord.toLowerCase();

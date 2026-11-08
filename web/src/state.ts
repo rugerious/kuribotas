@@ -1,4 +1,6 @@
-import type { Channel, ChatMessage, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import type { Channel, ChatMessage, Club, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import { CLUB } from "./cheer.ts";
+import { burstFor, type Move } from "./burst.ts";
 import { words, type Lang } from "./words.ts";
 
 // Everything on screen comes from this state, and the state only changes through reduce().
@@ -48,6 +50,8 @@ export type State = {
   colours: Record<string, RoomColour>; // colours picked on this device
   nudged: { key: number; tornado: boolean } | null; // the last time someone shook me (the app shakes, buzzes, vibrates)
   thrown: { key: number; item: ThrowItem; atMe: boolean } | null; // the last thing flying across the open channel
+  burst: { key: number; emoji: string; move: Move } | null; // the last big emoji said live in the open room
+  cheer: { key: number; club: Club } | null; // the last club flag raised in the open room
   seq: number; // gives every line a unique key
   quietJoins: boolean; // this device hides "chegou / saiu" lines in channels (/entradas nao)
 };
@@ -78,6 +82,8 @@ export const initialState: State = {
   colours: {},
   nudged: null,
   thrown: null,
+  burst: null,
+  cheer: null,
   seq: 0,
   quietJoins: false,
 };
@@ -291,6 +297,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         at: msg.at,
       };
       const seq = state.seq + 1;
+      const big = chat.channel === state.active ? burstFor(chat.text) : null; // only live, only in the open room
       return {
         ...updateRoom(state, chat.channel, (r) => ({
           ...notTyping(r, chat.nick), // the message they were typing has arrived
@@ -298,6 +305,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
           unread: r.name === state.active && state.visible ? r.unread : r.unread + 1,
         })),
         seq,
+        burst: big === null ? state.burst : { key: seq, ...big },
       };
     }
 
@@ -316,7 +324,9 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         })),
         seq,
       };
-      return msg.from === state.nick ? { ...next, active: other } : next;
+      const open = msg.from === state.nick ? { ...next, active: other } : next;
+      const big = open.active === other ? burstFor(msg.text) : null;
+      return big === null ? open : { ...open, burst: { key: seq, ...big } };
     }
 
     case "dm_history": {
@@ -389,6 +399,11 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       if (msg.channel !== state.active) return next;
       const atMe = msg.to === null || msg.to === state.nick;
       return { ...next, thrown: { key: next.seq, item: msg.item, atMe } };
+    }
+
+    case "cheer": {
+      const next = addEvent(state, msg.channel, w.events.cheer(msg.from, CLUB[msg.club].name), at, "info");
+      return msg.channel === state.active ? { ...next, cheer: { key: next.seq, club: msg.club } } : next;
     }
 
     case "typing": {

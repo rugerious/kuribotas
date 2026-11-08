@@ -82,6 +82,7 @@ export type Words = {
     shake: (on: boolean) => string;
     theme: (theme: "escuro" | "claro" | "auto") => string;
     joins: (shown: boolean) => string;
+    cheer: (from: string, club: string) => string;
     sound: (name: string, tornado: boolean) => string;
     notify: (on: boolean) => string;
     notifyUnsupported: string;
@@ -107,7 +108,7 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins" | "cheer", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -258,6 +259,7 @@ const pt: Words = {
         claro: "Tema claro neste aparelho ☀️",
         auto: "Tema automático: segue o telemóvel (escuro à noite se o telemóvel estiver assim) 🌗",
       })[t],
+    cheer: (from, club) => `${from} levantou a bandeira do ${club}! 🚩`,
     joins: (shown) =>
       shown
         ? "As linhas de quem chega e sai voltam a aparecer neste aparelho"
@@ -314,6 +316,7 @@ const pt: Words = {
     invisible_no_nudge: () => "A zongolar não dá para fazer isso (ias-te denunciar 👀)",
     throw_too_soon: (d) => `Calma com a chinela! Espera ${d} s`,
     batuque_too_soon: (d) => `O batuque ainda está a ecoar 🥁 Espera ${d} s`,
+    cheer_too_soon: (d) => `A bandeira ainda está no ar 🚩 Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
     push_invalid: () => "Este aparelho mandou um endereço de notificações que não reconheço. Tenta /notificacoes sim outra vez",
     not_op: () => "Só um @ pode fazer isso",
@@ -327,7 +330,7 @@ const pt: Words = {
     confirm_delete: (d) => `Essa sala tem ${d === "1" ? "1 mensagem" : `${d} mensagens`}, que se perde${d === "1" ? "" : "m"}. Para apagar mesmo: /apagar #sala sim`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao", cheer: "/bandeira benfica | porto | sporting | madrid | barca" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -382,6 +385,7 @@ const pt: Words = {
         { text: "Abanar a sala toda (uma vez por minuto)", cmd: "/abanar todos" },
         { text: "Chinela, vassoura ou a Maria das Dores", cmd: "/chinela " },
         { text: "Batuque para todos", cmd: "/batuque" },
+        { text: "Levantar a bandeira do teu clube (benfica, porto, sporting, madrid, barca)", cmd: "/bandeira " },
         { text: "Escolher o som do abanão neste telemóvel", cmd: "/som" },
         { text: "Sem abanões neste aparelho", cmd: "/abanoes nao" },
       ],
@@ -430,6 +434,7 @@ const pt: Words = {
     "/abanoes nao — sem abanões neste aparelho (/abanoes sim para voltar)",
     "/som — o som do abanão neste aparelho (/som 3, /som panelas) · /som tornado — o do tornado",
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
+    "/bandeira benfica | porto | sporting | madrid | barca — a bandeira do teu clube no ecrã de todos (1 em 20 s)",
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
     "/msg <nick> [mensagem] — conversa privada 💬 (guardada 3 dias; chega mesmo a quem não está cá)",
     "/aparelho — juntar outro aparelho teu (link ou código, 10 minutos) · /aparelho <nick> — (@) um código para alguém que perdeu a entrada · /aparelhos — os teus aparelhos · /xau — sair deste aparelho (/xau 2 tira outro)",
@@ -551,6 +556,7 @@ const en: Words = {
         claro: "Light theme on this device ☀️",
         auto: "Automatic theme: follows your phone's light or dark setting 🌗",
       })[t],
+    cheer: (from, club) => `${from} raised the ${club} flag! 🚩`,
     joins: (shown) =>
       shown
         ? "Arrived and left lines are back on this device"
@@ -607,6 +613,7 @@ const en: Words = {
     invisible_no_nudge: () => "you can't do that while invisible (it would give you away 👀)",
     throw_too_soon: (d) => `easy with the slipper! wait ${d} s`,
     batuque_too_soon: (d) => `the drums are still echoing 🥁 wait ${d} s`,
+    cheer_too_soon: (d) => `the flag is still flying 🚩 wait ${d} s`,
     internal: () => "something went wrong, please try again",
     push_invalid: () => "this device sent a notification address I don't recognise. Try /notifications on again",
     not_op: () => "only an @ can do that",
@@ -620,7 +627,7 @@ const en: Words = {
     confirm_delete: (d) => `that room has ${d === "1" ? "1 message" : `${d} messages`}, which will be lost. To delete it anyway: /delete #room yes`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off", cheer: "/flag benfica | porto | sporting | madrid | barca" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -675,6 +682,7 @@ const en: Words = {
         { text: "Nudge the whole room (once a minute)", cmd: "/nudge all" },
         { text: "Slipper, broom or the wooden spoon", cmd: "/slipper " },
         { text: "Drums for everyone", cmd: "/drums" },
+        { text: "Raise your club's flag (benfica, porto, sporting, madrid, barca)", cmd: "/flag " },
         { text: "Pick this phone's nudge sound", cmd: "/sound" },
         { text: "No nudges on this device", cmd: "/shake off" },
       ],
@@ -723,6 +731,7 @@ const en: Words = {
     "/shake off — no nudges on this device (/shake on to undo)",
     "/sound — this device's nudge sound (/sound 3, /sound panelas) · /sound tornado — the tornado's",
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
+    "/flag benfica | porto | sporting | madrid | barca — your club's flag on everyone's screen (1 per 20 s)",
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",
     "/msg <nick> [message] — private chat 💬 (kept 3 days; reaches people who are away too)",
     "/device — add another device of yours (link or code, 10 minutes) · /device <nick> — (@) a code for someone who lost their sign-in · /devices — your devices · /logout — sign this device out (/logout 2 removes another)",

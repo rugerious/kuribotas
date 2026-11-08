@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
-import type { ClientMessage, Device, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import type { ClientMessage, Club, Device, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { parseInput } from "./commands.ts";
 import {
   colourOf,
@@ -24,6 +24,8 @@ import {
   unlockSound,
   vibrate,
 } from "./sound.ts";
+import { BURST_GAP_MS, BURST_MS, type Move } from "./burst.ts";
+import { CHEER_MS, CLUB } from "./cheer.ts";
 import { complete, completions } from "./complete.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
 import { showCode } from "./invite.ts";
@@ -235,6 +237,9 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
   const [theme, setThemeNow] = useState<Theme>(loadTheme); // for the ⚙️ buttons (applied in main.tsx)
   const [prefill, setPrefill] = useState<{ text: string; key: number } | null>(null);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
+  const [big, setBig] = useState<{ emoji: string; move: Move } | null>(null);
+  const lastBig = useRef(0);
+  const [flag, setFlag] = useState<Club | null>(null);
   const askedDm = useRef(new Set<string>()); // private chats whose saved messages were asked for
   const stateRef = useRef(state); // the latest state, for the socket's event handlers
   stateRef.current = state;
@@ -400,6 +405,30 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     };
   }, [state.nudged?.key]);
 
+  // A big emoji said live in the open room: it fills the screen, does its move and goes. Same switch as
+  // nudges (/abanoes nao turns it off), never more than one every few seconds.
+  useEffect(() => {
+    const burst = state.burst;
+    if (burst === null || !shakeOn || Date.now() - lastBig.current < BURST_GAP_MS) return;
+    lastBig.current = Date.now();
+    setBig({ emoji: burst.emoji, move: burst.move });
+    const stop = setTimeout(() => setBig(null), BURST_MS + 100);
+    return () => clearTimeout(stop);
+  }, [state.burst?.key]);
+
+  // A club's flag raised in the open room: across the whole screen for a moment. /abanoes nao: only the line.
+  useEffect(() => {
+    const cheer = state.cheer;
+    if (cheer === null || !shakeOn) return;
+    setFlag(null);
+    const start = setTimeout(() => setFlag(cheer.club), 20);
+    const stop = setTimeout(() => setFlag(null), CHEER_MS + 100);
+    return () => {
+      clearTimeout(start);
+      clearTimeout(stop);
+    };
+  }, [state.cheer?.key]);
+
   // A chinela (or vassoura, colher, batuque) in the open channel: everyone sees it fly, the target gets
   // hit (a jolt, the sound, a buzz). "/abanoes nao" turns all of it off; No biolo keeps it silent.
   useEffect(() => {
@@ -563,6 +592,19 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     <div
       class={`app room-${colourOf(state, state.active)}${shaking ? ` shake-${shaking}` : ""}${flying?.atMe ? ` hit-${flying.item}` : ""}`}
     >
+      {flag && (
+        <div class={`cheer cheer-${flag}`} aria-hidden="true">
+          <div class="cheer-flag">
+            <span class="cheer-word">{CLUB[flag].word}</span>
+          </div>
+          {CLUB[flag].mark && <span class="cheer-mark">{CLUB[flag].mark}</span>}
+        </div>
+      )}
+      {big && (
+        <div class={`burst burst-${big.move}`} aria-hidden="true">
+          <span class="big">{big.emoji}</span>
+        </div>
+      )}
       {flying && (
         <div class={`throw throw-${flying.item}`} aria-hidden="true">
           <span class="thing">{flying.item === "colher" ? <WoodenSpoon /> : THROW_EMOJI[flying.item]}</span>
