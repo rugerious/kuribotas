@@ -633,3 +633,18 @@ test("in a private chat: a nudge reaches both sides with the usual limits, typin
   assert.equal((await nextReal(c.c)).text, "marker-dm-typing"); // c saw none of it
   for (const x of [a, b, c]) x.c.ws.close();
 });
+
+test("a club flag waves for the whole channel, once every 20 s; an unknown club is ignored", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "cheer", channel: "#mujimbo", club: "benfica" });
+  assert.deepEqual(await until(b.c, ofType("cheer")), { type: "cheer", channel: "#mujimbo", from: a.nick, club: "benfica" });
+  assert.equal((await until(a.c, ofType("cheer"))).club, "benfica"); // the one who raised it sees it too
+  send(a.c, { type: "cheer", channel: "#mujimbo", club: "porto" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["cheer_too_soon", "20"]);
+  send(b.c, { type: "cheer", channel: "#mujimbo", club: "manchester" }); // not a club we know: dropped
+  send(b.c, { type: "say", channel: "#mujimbo", text: "marker-cheer" });
+  assert.equal((await nextReal(a.c)).text, "marker-cheer");
+  a.c.ws.close();
+  b.c.ws.close();
+});

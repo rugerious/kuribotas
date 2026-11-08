@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientMessage, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import type { ClientMessage, Club, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { makeInvite } from "./auth.ts";
 import { isValidSubscription, type PushSend } from "./push.ts";
 import { NICK_PATTERN, type Person, type PushRow, type Role, type Store } from "./store.ts";
@@ -19,6 +19,7 @@ type Someone = {
   groupTornadoAt: number | undefined; // ...a tornado to the whole channel
   thrownAt: number[]; // recent chinelas, vassouras and colheres
   batuqueAt: number | undefined; // the last batuque
+  cheerAt: number | undefined; // the last /bandeira
   saidAt: number[]; // their recent messages (channels and DMs), to stop a flood
 };
 
@@ -81,12 +82,14 @@ const GROUP_TORNADO_EVERY_MS = 300_000; // a tornado for everyone: once every 5 
 const THROW_BURST = 3; // chinelas, vassouras and colheres together...
 const THROW_WINDOW_MS = 10_000; // ...in this window
 const BATUQUE_EVERY_MS = 60_000; // a batuque for the whole channel: once a minute
+const CHEER_EVERY_MS = 20_000; // a club's flag across everyone's screen: once every 20 s
 const MESSAGE_BURST = 20; // messages (channels and DMs together) a person may send...
 const MESSAGE_WINDOW_MS = 10_000; // ...in this window: plenty for a conversation, not for a flood
 const MENTION_PUSH_EVERY_MS = 20_000; // at most one mention notification per device in this time
 const MAX_PUSH_TEXT = 140; // characters of a message shown in a notification
 const STATUSES: readonly Status[] = ["online", "away", "busy", "invisible"];
 const THROW_ITEMS: readonly ThrowItem[] = ["chinela", "vassoura", "colher", "batuque"];
+const CLUBS: readonly Club[] = ["benfica", "porto", "sporting", "madrid", "barca"];
 
 // Channels: "#" + 1-32 letters, digits, _ or -. Stored in lower case: #Futebol and #futebol are one channel.
 const CHANNEL_PATTERN = /^#[\p{L}\p{N}_-]{1,32}$/u;
@@ -161,6 +164,7 @@ export function attachChat(
       groupTornadoAt: undefined,
       thrownAt: [],
       batuqueAt: undefined,
+      cheerAt: undefined,
       saidAt: [],
     };
     people.set(person.id, who);
@@ -274,6 +278,18 @@ export function attachChat(
         const to = target?.nick ?? away[0]?.nick ?? wanted;
         sendToChannel(channel, { type: "throw", channel, from: me.nick, to, item: msg.item });
         for (const row of away) notify(row, msg.item, me.nick, channel, "", "high");
+        return;
+      }
+      case "cheer": {
+        // Not saved, like the batuque: the whole channel sees the flag. Football fun, so it waits 20 s.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't wave a flag while invisible");
+        const now = Date.now();
+        const wait = me.who.cheerAt === undefined ? 0 : me.who.cheerAt + CHEER_EVERY_MS - now;
+        if (wait > 0) return reject(me, "cheer_too_soon", seconds(wait), "one flag every 20 s");
+        me.who.cheerAt = now;
+        sendToChannel(channel, { type: "cheer", channel, from: me.nick, club: msg.club });
         return;
       }
       case "invite": {
@@ -870,6 +886,11 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       if (channel === undefined || item === undefined) return undefined;
       if (item === "batuque") return { type: "throw", channel, item };
       return nick === undefined ? undefined : { type: "throw", channel, item, nick };
+    }
+    case "cheer": {
+      const channel = str("channel");
+      const club = CLUBS.find((c) => c === v.club);
+      return channel === undefined || club === undefined ? undefined : { type: "cheer", channel, club };
     }
     case "make_device_link": {
       const nick = str("nick");
