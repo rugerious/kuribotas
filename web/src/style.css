@@ -563,8 +563,9 @@ button.person-who:hover,
   font: 500 11px/1 var(--mono);
   cursor: pointer;
 }
-.nudge > span {
-  font-size: 18px;
+.nudge > .icon {
+  width: 20px;
+  height: 20px;
 }
 .nudge:hover:not(:disabled) {
   border-color: var(--room);
@@ -683,9 +684,10 @@ button.person-who:hover,
   letter-spacing: -0.02em;
   color: var(--ink);
 }
-.tab-menu span {
-  margin-left: 0;
-  font-size: 13px;
+.tab-menu .icon-open,
+.tab-menu .icon-close {
+  width: 0.95em;
+  margin-left: -2px;
   color: var(--amber);
 }
 .tab-menu.open {
@@ -1671,6 +1673,10 @@ html[data-look="moderno"] .complete-bar {
 html[data-look="moderno"] .emoji-bar button {
   border-radius: 12px;
 }
+html[data-look="moderno"] .nudge {
+  border-radius: 12px;
+  font: 600 12px/1 var(--sans);
+}
 html[data-look="moderno"] .complete {
   border-radius: 18px;
   font: 600 14px var(--sans);
@@ -1746,4 +1752,36 @@ html[data-look="moderno"][data-theme="light"] .tab.active .badge {
     background: var(--room);
     color: var(--panel);
   }
+}
+
+/* Drawn icons (icons.tsx): sized with the text around them, coloured by it */
+.tab {
+  flex-shrink: 0; /* with icons inside, a squeezed tab would overlap its neighbour */
+}
+.icon {
+  width: 1.2em;
+  height: 1.2em;
+  flex-shrink: 0;
+  vertical-align: -0.25em;
+}
+.tab .icon-chat,
+.tab .icon-lock,
+.tab-tips .icon-tips {
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.35em;
+}
+.tab-menu .icon-gear {
+  width: 1.45em;
+  height: 1.45em;
+}
+.note-edit-toggle,
+.emoji-toggle {
+  color: var(--ink);
+}
+.note-edit-toggle .icon,
+.emoji-toggle .icon {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
 }
