@@ -87,6 +87,8 @@ export type Words = {
     cheer: (from: string, club: string) => string;
     logSaved: (channel: string, count: number, cut: boolean) => string;
     snow: (from: string, channel: string) => string;
+    roll: (from: string, sides: number, result: number) => string;
+    eightBall: (from: string, question: string, answer: string) => string;
     logHeader: (channel: string, when: string, count: number) => string;
     sound: (name: string, tornado: boolean) => string;
     notify: (on: boolean) => string;
@@ -114,10 +116,11 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins" | "cheer" | "kamba" | "look" | "groupInvite", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins" | "cheer" | "kamba" | "look" | "groupInvite" | "roll" | "eightBall", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
+  eightBall: readonly string[]; // the magic ball's 12 answers; the server sends an index (EIGHT_BALL_ANSWERS)
   kamba: {
     opening: string;
     wrong: string;
@@ -280,6 +283,8 @@ const pt: Words = {
         : "Estilo mIRC neste aparelho: o log clássico 📟",
     cheer: (from, club) => `${from} levantou a bandeira do ${club}! 🚩`,
     snow: (from, ch) => `${from} fez nevar no ${ch} ❄️`,
+    roll: (from, sides, n) => `🎲 ${from} lançou o dado (1–${sides}) e saiu ${n}${n === sides ? "! 🔥" : ""}`,
+    eightBall: (from, q, a) => `🎱 ${from} perguntou «${q}» · A bola diz: ${a}`,
     logSaved: (ch, n, cut) =>
       `📜 Log do ${ch} descarregado: ${n} mensage${n === 1 ? "m" : "ns"}${cut ? " (só as mais recentes)" : ""}. Está nas transferências.`,
     logHeader: (ch, when, n) => `Kuribotas · ${ch} · log de ${when} · ${n} mensagens`,
@@ -344,6 +349,7 @@ const pt: Words = {
     cheer_too_soon: (d) => `A bandeira ainda está no ar 🚩 Espera ${d} s`,
     log_too_soon: (d) => `O log ainda agora saiu 📜 Espera ${d} s`,
     snow_too_soon: (d) => `Ainda está a nevar ❄️ Espera ${d} s`,
+    fun_too_soon: (d) => `Calma, kamba 🎲 Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
     push_invalid: () => "Este aparelho mandou um endereço de notificações que não reconheço. Tenta /notificacoes sim outra vez",
     not_op: () => "Só um @ pode fazer isso",
@@ -357,10 +363,24 @@ const pt: Words = {
     confirm_delete: (d) => `Essa sala tem ${d === "1" ? "1 mensagem" : `${d} mensagens`}, que se perde${d === "1" ? "" : "m"}. Para apagar mesmo: /apagar #sala sim`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao", cheer: "/bandeira benfica | porto | sporting | madrid | barca", kamba: "/kamba <código>", look: "/estilo mirc | moderno", groupInvite: "/convite [1 a 10]" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao", cheer: "/bandeira benfica | porto | sporting | madrid | barca", kamba: "/kamba <código>", look: "/estilo mirc | moderno", groupInvite: "/convite [1 a 10]", roll: "/roll [2 a 100]", eightBall: "/8ball <pergunta>" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
+  eightBall: [
+    "Confirmado, kota ✅",
+    "Sem dúvida nenhuma",
+    "Bazamos nisso: sim!",
+    "É só confiar",
+    "Parece que sim",
+    "Hum… pergunta mais logo",
+    "Pergunta à tua mãe",
+    "Agora não dá para ver",
+    "Nem pensar",
+    "Esquece isso, mano",
+    "As estrelas dizem que não",
+    "Duvido muito",
+  ],
   kamba: {
     opening: "🎅 A abrir o teu envelope… só tu vês a resposta",
     wrong: "🎅 Esse código não abre nenhum envelope. Confirma as letras com o organizador",
@@ -423,6 +443,8 @@ const pt: Words = {
         { text: "Batuque para todos", cmd: "/batuque" },
         { text: "Levantar a bandeira do teu clube (benfica, porto, sporting, madrid, barca)", cmd: "/bandeira " },
         { text: "Fazer nevar no ecrã de todos na sala (1 por minuto)", cmd: "/neve" },
+        { text: "Lançar um dado (ou /roll 20 para um de 20 lados)", cmd: "/roll" },
+        { text: "Perguntar à bola mágica", cmd: "/8ball " },
         { text: "Escolher o som do abanão neste telemóvel", cmd: "/som" },
         { text: "Sem abanões neste aparelho", cmd: "/abanoes nao" },
       ],
@@ -473,6 +495,7 @@ const pt: Words = {
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/bandeira benfica | porto | sporting | madrid | barca — a bandeira do teu clube no ecrã de todos (1 em 20 s)",
     "/neve — neve a cair no ecrã de todos na sala ❄️ (1 por minuto)",
+    "/roll [N] — lança um dado (6 lados, ou N) 🎲 · /8ball <pergunta> — a bola mágica responde 🎱",
     "/log — descarrega a conversa desta sala num ficheiro de texto, como o mIRC (sobe até ao topo para ver mensagens antigas)",
     "/kamba <código> — abre o teu envelope do Kamba Oculto (só tu vês, o código não sai do teu aparelho)",
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
@@ -604,6 +627,8 @@ const en: Words = {
         : "mIRC style on this device: the classic log 📟",
     cheer: (from, club) => `${from} raised the ${club} flag! 🚩`,
     snow: (from, ch) => `${from} made it snow in ${ch} ❄️`,
+    roll: (from, sides, n) => `🎲 ${from} rolled the die (1–${sides}): ${n}${n === sides ? "! 🔥" : ""}`,
+    eightBall: (from, q, a) => `🎱 ${from} asked “${q}” · The ball says: ${a}`,
     logSaved: (ch, n, cut) =>
       `📜 ${ch} log downloaded: ${n} message${n === 1 ? "" : "s"}${cut ? " (the newest only)" : ""}. It's in your downloads.`,
     logHeader: (ch, when, n) => `Kuribotas · ${ch} · log of ${when} · ${n} messages`,
@@ -668,6 +693,7 @@ const en: Words = {
     cheer_too_soon: (d) => `the flag is still flying 🚩 wait ${d} s`,
     log_too_soon: (d) => `the log just went out 📜 wait ${d} s`,
     snow_too_soon: (d) => `it's still snowing ❄️ wait ${d} s`,
+    fun_too_soon: (d) => `easy there 🎲 wait ${d} s`,
     internal: () => "something went wrong, please try again",
     push_invalid: () => "this device sent a notification address I don't recognise. Try /notifications on again",
     not_op: () => "only an @ can do that",
@@ -681,10 +707,24 @@ const en: Words = {
     confirm_delete: (d) => `that room has ${d === "1" ? "1 message" : `${d} messages`}, which will be lost. To delete it anyway: /delete #room yes`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off", cheer: "/flag benfica | porto | sporting | madrid | barca", kamba: "/kamba <code>", look: "/style mirc | modern", groupInvite: "/invitelink [1 to 10]" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off", cheer: "/flag benfica | porto | sporting | madrid | barca", kamba: "/kamba <code>", look: "/style mirc | modern", groupInvite: "/invitelink [1 to 10]", roll: "/roll [2 to 100]", eightBall: "/8ball <question>" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
+  eightBall: [
+    "Confirmed, kota ✅",
+    "No doubt at all",
+    "Let's go: yes!",
+    "Just trust it",
+    "Looks like yes",
+    "Hmm… ask again later",
+    "Ask your mother",
+    "Can't see right now",
+    "No way",
+    "Forget it, bro",
+    "The stars say no",
+    "Very doubtful",
+  ],
   kamba: {
     opening: "🎅 Opening your envelope… only you see the answer",
     wrong: "🎅 That code opens no envelope. Check the letters with the organiser",
@@ -747,6 +787,8 @@ const en: Words = {
         { text: "Drums for everyone", cmd: "/drums" },
         { text: "Raise your club's flag (benfica, porto, sporting, madrid, barca)", cmd: "/flag " },
         { text: "Make it snow on everyone's screen in the room (1 a minute)", cmd: "/snow" },
+        { text: "Roll a die (or /roll 20 for a 20-sided one)", cmd: "/roll" },
+        { text: "Ask the magic ball", cmd: "/8ball " },
         { text: "Pick this phone's nudge sound", cmd: "/sound" },
         { text: "No nudges on this device", cmd: "/shake off" },
       ],
@@ -797,6 +839,7 @@ const en: Words = {
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/flag benfica | porto | sporting | madrid | barca — your club's flag on everyone's screen (1 per 20 s)",
     "/snow — snow falling on everyone's screen in the room ❄️ (1 a minute)",
+    "/roll [N] — roll a die (6 sides, or N) 🎲 · /8ball <question> — the magic ball answers 🎱",
     "/log — downloads this room's conversation as a text file, like mIRC (scroll to the top for older messages)",
     "/kamba <code> — opens your Kamba Oculto envelope (only you see it; the code never leaves your device)",
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",

@@ -49,6 +49,9 @@ const ALIASES: Record<string, string> = {
   "/entradas": "/joins",
   "/flag": "/bandeira",
   "/snow": "/neve",
+  "/dado": "/roll",
+  "/dice": "/roll",
+  "/bola": "/8ball",
   "/amigooculto": "/kamba",
   "/secretsanta": "/kamba",
   "/abanões": "/shake",
@@ -79,7 +82,7 @@ const ALIASES: Record<string, string> = {
 };
 
 // In a private chat these make no sense (they belong to channels).
-const CHANNEL_ONLY = ["/log", "/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque", "/bandeira", "/neve"];
+const CHANNEL_ONLY = ["/log", "/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque", "/bandeira", "/neve", "/roll", "/8ball"];
 
 // The family's arsenal, in both languages.
 const THROWS: Record<string, ThrowItem> = {
@@ -225,6 +228,16 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       return send({ type: "log", channel });
     case "/kamba":
       return rest ? { kind: "kamba", code: rest } : usage(w.examples.kamba);
+    case "/roll": {
+      // "/roll" is a 6-sided die; "/roll 20" a 20-sided one (2 to 100).
+      if (!firstWord) return send({ type: "roll", channel });
+      const sides = Number(firstWord.replace(/^d/i, ""));
+      return Number.isInteger(sides) && sides >= 2 && sides <= 100
+        ? send({ type: "roll", channel, sides })
+        : usage(w.examples.roll);
+    }
+    case "/8ball":
+      return rest && rest.length <= 200 ? send({ type: "8ball", channel, question: rest }) : usage(w.examples.eightBall);
     case "/neve":
       return send({ type: "snow", channel });
     case "/bandeira": {
