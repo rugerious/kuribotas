@@ -468,6 +468,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
     }
     case "log":
     case "link":
+    case "links":
     case "devices":
     case "rooms":
       return state; // shown by the app, which knows this page's address and the date format

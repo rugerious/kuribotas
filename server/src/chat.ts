@@ -65,6 +65,7 @@ const HOME_CHANNEL = "#mujimbo"; // where the app opens (and the first home room
 const HISTORY_LIMIT = 50; // messages sent when joining a channel
 const DM_HISTORY_LIMIT = 100; // private messages sent when a private chat tab opens
 const OLDER_PAGE = 100; // messages per scroll to the top
+const MAX_GROUP_INVITES = 10; // /convite N: at most this many links at once
 const LOG_LIMIT = 20_000; // /log sends at most this many (90 days of a busy family is far less)
 const LOG_EVERY_MS = 30_000; // one /log every 30 s per person: it's the heaviest thing anyone can ask
 const DM_TABS_DAYS = 3; // private chats with messages this recent reopen as tabs on arrival
@@ -434,10 +435,16 @@ export function attachChat(
         return;
       }
       case "make_invite": {
-        // A link for one new person (7 days, once). Only to the @ who asked: they decide who gets it.
+        // Links for new people (7 days, once each). Only to the @ who asked: they decide who gets them.
+        // /convite 5 makes five at once, one per person (for Christmas), never more than MAX_GROUP_INVITES.
         if (who.role !== "admin") return reject(me, "not_op", "", "only an @ can invite");
-        const { token, expiresAt } = makeInvite(store, "person", { personId: null, role: "member", createdBy: who.id });
-        send(me, { type: "link", kind: "person", token, expiresAt });
+        const count = Math.min(Math.max(msg.count ?? 1, 1), MAX_GROUP_INVITES);
+        const made = Array.from({ length: count }, () =>
+          makeInvite(store, "person", { personId: null, role: "member", createdBy: who.id }),
+        );
+        const expiresAt = made[0]!.expiresAt;
+        if (count === 1) send(me, { type: "link", kind: "person", token: made[0]!.token, expiresAt });
+        else send(me, { type: "links", tokens: made.map((m) => m.token), expiresAt });
         return;
       }
       case "make_device_link": {
@@ -924,7 +931,11 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
       const nick = str("nick");
       return nick === undefined ? { type: "make_device_link" } : { type: "make_device_link", nick };
     }
-    case "make_invite":
+    case "make_invite": {
+      const count = v.count;
+      if (count === undefined) return { type: "make_invite" };
+      return typeof count === "number" && Number.isInteger(count) && count >= 1 && count <= 10 ? { type: "make_invite", count } : undefined;
+    }
     case "devices":
     case "rooms":
       return { type: v.type };
