@@ -171,8 +171,14 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       return EVERYONE.includes(firstWord.toLowerCase())
         ? send({ type: "nudge", channel, everyone: true, tornado: command === "/tornado" })
         : send({ type: "nudge", channel, nick: firstWord, tornado: command === "/tornado" });
-    case "/convite":
-      return send({ type: "make_invite" });
+    case "/convite": {
+      // "/convite" makes one link; "/convite 5" makes five, one per person (up to 10).
+      if (!firstWord) return send({ type: "make_invite" });
+      const count = Number(firstWord);
+      return Number.isInteger(count) && count >= 1 && count <= 10
+        ? send(count === 1 ? { type: "make_invite" } : { type: "make_invite", count })
+        : usage(w.examples.groupInvite);
+    }
     case "/aparelho":
       // "/aparelho" = a code for your own other device; "/aparelho Kota" = (an @) a code for Kota.
       return send(firstWord ? { type: "make_device_link", nick: firstWord } : { type: "make_device_link" });

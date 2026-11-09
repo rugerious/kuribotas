@@ -92,7 +92,7 @@ export type ClientMessage =
   | { type: "log"; channel: string } // /log: the whole saved conversation, to download as a text file
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
   | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" }
-  | { type: "make_invite" } // an @ makes an invite link for a new person (/convite)
+  | { type: "make_invite"; count?: number } // an @ makes invite links for new people (/convite, /convite 5): 1–10
   | { type: "make_device_link"; nick?: string } // a link and code to add another device: yours, or (an @ only) someone else's (/aparelho [nick])
   | { type: "devices" } // list your devices (/aparelhos)
   | { type: "forget_device"; id: number } // sign one of your devices out (/xau 2)
@@ -148,6 +148,7 @@ export type ServerMessage =
   | { type: "cheer"; channel: string; from: string; club: Club } // a club's flag waves across everyone's screen; not saved
   // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").
   | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string; for?: string } // for = whose device code an @ made
+  | { type: "links"; tokens: string[]; expiresAt: string } // several person invites at once (/convite 5), one per person
   | { type: "devices"; devices: Device[] } // only to you
   | { type: "role"; nick: string; role: Role; by: string } // to everyone: someone got or lost @
   | { type: "removed"; nick: string; by: string } // to everyone: an @ removed someone

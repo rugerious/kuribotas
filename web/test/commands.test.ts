@@ -234,3 +234,11 @@ test("/entradas and /joins show or hide the arrived and left lines on this devic
   assert.deepEqual(parseInput("/joins on", here, "en"), { kind: "joins", on: true });
   assert.equal(parseInput("/entradas talvez", here, "pt").kind, "error");
 });
+
+test("/convite makes one invite; /convite 5 makes five; anything else shows how", () => {
+  assert.deepEqual(parseInput("/convite", here, "pt"), { kind: "send", msg: { type: "make_invite" } });
+  assert.deepEqual(parseInput("/convite 5", here, "pt"), { kind: "send", msg: { type: "make_invite", count: 5 } });
+  assert.deepEqual(parseInput("/convite 1", here, "pt"), { kind: "send", msg: { type: "make_invite" } });
+  assert.equal(parseInput("/convite 11", here, "pt").kind, "error");
+  assert.equal(parseInput("/convite muitos", here, "pt").kind, "error");
+});

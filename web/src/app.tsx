@@ -345,6 +345,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       return;
     }
     if (msg.type === "link") return showLink(msg.kind, msg.token, msg.for);
+    if (msg.type === "links") return showLinks(msg.tokens);
     if (msg.type === "devices") return showDevices(msg.devices);
     if (msg.type === "log") return saveLog(msg.channel, msg.messages, msg.cut);
     if (msg.type === "rooms") {
@@ -383,6 +384,22 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     };
     if (navigator.clipboard === undefined) return say(false);
     navigator.clipboard.writeText(link).then(
+      () => say(true),
+      () => say(false),
+    );
+  };
+
+  // /convite N: numbered links, one per person, all copied at once (numbered, so they're easy to
+  // hand out one by one in WhatsApp).
+  const showLinks = (tokens: string[]): void => {
+    const links = tokens.map((token) => `${location.origin}/#convite=${token}`);
+    const say = (copied: boolean): void => {
+      const t = words(stateRef.current.lang).events;
+      dispatch({ type: "local", text: t.inviteLinks(links.length, copied), tone: "info", at: now() });
+      links.forEach((link, i) => dispatch({ type: "local", text: `${i + 1}. ${link}`, tone: "info", at: now() }));
+    };
+    if (navigator.clipboard === undefined) return say(false);
+    navigator.clipboard.writeText(links.map((link, i) => `${i + 1}. ${link}`).join("\n")).then(
       () => say(true),
       () => say(false),
     );

@@ -218,6 +218,13 @@ test("only an @ makes invite links; anyone makes a code for their own other devi
   const link = await op.next((m) => m.type === "link");
   assert.equal(link.kind, "person");
   assert.deepEqual(await (await fetch(`${origin}/api/invite/${String(link.token)}`)).json(), { kind: "person" });
+  op.send({ type: "make_invite", count: 3 }); // /convite 3: three different links, one per person
+  const links = await op.next((m) => m.type === "links");
+  const tokens = links.tokens as string[];
+  assert.equal(new Set(tokens).size, 3);
+  for (const t of tokens) assert.deepEqual(await (await fetch(`${origin}/api/invite/${t}`)).json(), { kind: "person" });
+  member.send({ type: "make_invite", count: 3 });
+  assert.equal((await member.next((m) => m.type === "error")).code, "not_op");
   member.send({ type: "make_device_link" });
   const code = await member.next((m) => m.type === "link");
   assert.equal(code.kind, "device");
