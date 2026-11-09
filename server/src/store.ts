@@ -74,6 +74,7 @@ export type Store = {
   setTopic: (name: string, topic: string) => Channel;
   addMessage: (msg: NewMessage) => StoredMessage;
   recentMessages: (channel: string, limit: number) => StoredMessage[];
+  messagesBefore: (channel: string, beforeId: number, limit: number) => StoredMessage[]; // oldest first
   deleteMessagesBefore: (at: string) => number; // how many went
   deletePrivateBefore: (at: string) => number; // private rooms' messages and direct messages older than `at`
   addDirect: (fromId: number, toId: number, kind: MessageKind, text: string, at: string) => DirectMessage;
@@ -280,6 +281,14 @@ export function openStore(path: string): Store {
     LIMIT :limit
   `);
 
+  const selectBefore = db.prepare(`
+    SELECT m.id AS id, c.name AS channel, m.nick AS nick, m.kind AS kind, m.text AS text, m.created_at AS at
+    FROM messages m JOIN channels c ON c.id = m.channel_id
+    WHERE c.name = :channel AND m.id < :before
+    ORDER BY m.id DESC
+    LIMIT :limit
+  `);
+
   const removeOldMessages = db.prepare("DELETE FROM messages WHERE created_at < :at");
   const removeOldPrivate = db.prepare(
     "DELETE FROM messages WHERE created_at < :at AND channel_id IN (SELECT id FROM channels WHERE private = 1)",
@@ -429,6 +438,11 @@ export function openStore(path: string): Store {
         .all({ channel, limit })
         .map((row) => toMessage(row))
         .reverse(), // oldest first, ready to display
+    messagesBefore: (channel, before, limit) =>
+      selectBefore
+        .all({ channel, before, limit })
+        .map((row) => toMessage(row))
+        .reverse(),
     deleteMessagesBefore: (at) => Number(removeOldMessages.run({ at }).changes),
     deletePrivateBefore: (at) => Number(removeOldPrivate.run({ at }).changes) + Number(removeOldDirect.run({ at }).changes),
     addDirect: (fromId, toId, kind, text, at) => {

@@ -1,10 +1,12 @@
-import { useEffect, useReducer, useRef, useState } from "preact/hooks";
-import type { ClientMessage, Club, Device, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
+import { Fragment } from "preact";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "preact/hooks";
+import type { ChatMessage, ClientMessage, Club, Device, Member, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { parseInput } from "./commands.ts";
 import {
   colourOf,
   initialState,
   isDm,
+  MAX_LINES,
   reduce,
   totalUnread,
   ROOM_COLOURS,
@@ -29,6 +31,7 @@ import { CHEER_MS, CLUB } from "./cheer.ts";
 import { complete, completions } from "./complete.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
 import { Icon } from "./icons.tsx";
+import { logFileName, logText, newDay, stamp } from "./log.ts";
 import { showCode } from "./invite.ts";
 import { openEnvelope } from "./kamba.ts";
 import { KAMBA_2026 } from "./kamba-envelopes.ts";
@@ -317,6 +320,22 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     if (s.status !== "online" || s.note !== "") say({ type: "status", status: s.status, note: s.note });
   };
 
+  // /log: the room's saved conversation as a text file, made on this device and handed to the browser.
+  const saveLog = (channel: string, messages: ChatMessage[], cut: boolean): void => {
+    const t = words(stateRef.current.lang).events;
+    const when = new Date();
+    const blob = new Blob([logText(t.logHeader(channel, stamp(when), messages.length), messages)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = logFileName(channel, when);
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    dispatch({ type: "local", text: t.logSaved(channel, messages.length, cut), tone: "info", at: now() });
+  };
+
   const onMessage = (ws: WebSocket, e: MessageEvent): void => {
     // Messages from the server; the socket's handlers only see refs, so this never reads stale state.
     let msg: ServerMessage;
@@ -327,6 +346,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     }
     if (msg.type === "link") return showLink(msg.kind, msg.token, msg.for);
     if (msg.type === "devices") return showDevices(msg.devices);
+    if (msg.type === "log") return saveLog(msg.channel, msg.messages, msg.cut);
     if (msg.type === "rooms") {
       const t = words(stateRef.current.lang).events;
       const lines = [t.roomsTitle, ...msg.rooms.map((r) => t.room(r.name, r.people, r.topic, r.home, r.private)), t.roomsHelp];
@@ -806,7 +826,15 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       )}
 
       <div class={showTips ? "body hidden" : "body"}>
-        <Log lines={room?.lines ?? []} modern={look === "moderno"} />
+        <Log
+          key={room?.name}
+          lines={room?.lines ?? []}
+          modern={look === "moderno"}
+          more={room !== undefined && !isDm(room.name) && (room.more || room.lines.length >= MAX_LINES)}
+          start={w.ui.historyStart}
+          lang={state.lang}
+          onOlder={(before) => room !== undefined && send({ type: "older", channel: room.name, before })}
+        />
         {room && !isDm(room.name) && (
           <People
             room={room}
@@ -868,22 +896,73 @@ function Tips({ w, onTry }: { w: Words; onTry: (cmd: string) => void }) {
   );
 }
 
-function Log({ lines, modern }: { lines: Line[]; modern: boolean }) {
+function Log({
+  lines,
+  modern,
+  more,
+  start,
+  lang,
+  onOlder,
+}: {
+  lines: Line[];
+  modern: boolean;
+  more: boolean; // older messages are saved: scrolling to the top asks for them
+  start: string; // shown above the oldest message when there is nothing older
+  lang: Lang;
+  onOlder: (before: number) => void;
+}) {
+  const box = useRef<HTMLElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  // Keep the newest line in view, like a terminal.
+  const asked = useRef(0); // the oldest id already asked about, so one scroll asks once
+  const anchor = useRef<{ height: number; top: number } | null>(null);
+  // Keep the newest line in view, like a terminal (only when a new line arrives at the bottom).
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [lines.length, lines[lines.length - 1]?.key]);
+  }, [lines[lines.length - 1]?.key]);
+  // An older page went in above: keep the eyes on the same message instead of jumping.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el === null || anchor.current === null) return;
+    el.scrollTop = anchor.current.top + (el.scrollHeight - anchor.current.height);
+    anchor.current = null;
+  }, [lines[0]?.key]);
+
+  const oldest = lines.find((l) => l.kind === "message");
+  const today = new Date();
+  const onScroll = (): void => {
+    const el = box.current;
+    if (!more || el === null || el.scrollTop > 120 || oldest?.kind !== "message") return;
+    if (asked.current === oldest.msg.id) return;
+    asked.current = oldest.msg.id;
+    anchor.current = { height: el.scrollHeight, top: el.scrollTop };
+    onOlder(oldest.msg.id);
+  };
 
   return (
-    <section class="log" aria-live="polite">
-      {lines.map((line, i) =>
-        modern ? (
-          <ModernLine key={line.key} line={line} cont={continues(lines[i - 1], line)} />
+    <section class="log" aria-live="polite" ref={box} onScroll={onScroll}>
+      {!more && oldest !== undefined && <p class="log-start">{start}</p>}
+      {lines.map((line, i) => {
+        // A day line where the date changes, so older pages read right ("[08:01]" of which day?).
+        let prevAt: string | undefined;
+        for (let j = i - 1; j >= 0 && prevAt === undefined; j--) {
+          const l = lines[j]!;
+          prevAt = l.kind === "message" ? l.msg.at : undefined;
+        }
+        const day = line.kind === "message" ? newDay(prevAt, line.msg.at, today) : null;
+        const view = modern ? (
+          <ModernLine key={line.key} line={line} cont={day === null && continues(lines[i - 1], line)} />
         ) : (
           <LineView key={line.key} line={line} />
-        ),
-      )}
+        );
+        return day === null ? (
+          view
+        ) : (
+          <Fragment key={line.key}>
+            <p class="log-day">{dayName(day, lang)}</p>
+            {view}
+          </Fragment>
+        );
+      })}
       <div ref={end} />
     </section>
   );
@@ -1278,6 +1357,12 @@ function InputBar({
     </form>
     </>
   );
+}
+
+// "domingo, 1 de novembro" / "Sunday, 1 November", in the phone's words.
+function dayName(day: string, lang: Lang): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString(lang === "pt" ? "pt-PT" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
 }
 
 function clock(iso: string): string {
