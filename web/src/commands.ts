@@ -1,6 +1,7 @@
 import type { ClientMessage, Status, ThrowItem } from "../../shared/protocol.ts";
 import { isDm, ROOM_COLOURS, type RoomColour } from "./state.ts";
 import { clubNamed } from "./cheer.ts";
+import { lookNamed, type Look } from "./look.ts";
 import { themeNamed, type Theme } from "./theme.ts";
 import { isLang, words, type Lang } from "./words.ts";
 
@@ -16,6 +17,7 @@ export type Parsed =
   | { kind: "shake"; on: boolean } // handled on this device
   | { kind: "joins"; on: boolean } // handled on this device: show (true) or hide the arrived/left lines
   | { kind: "theme"; theme: Theme } // handled on this device: escuro | claro | auto
+  | { kind: "look"; look: Look } // handled on this device: mirc | moderno
   | { kind: "sound"; tornado: boolean; name?: string } // handled on this device; no name = list the options
   | { kind: "openDm"; nick: string } // open a private chat tab without sending anything
   | { kind: "closeDm"; nick: string } // close a private chat tab
@@ -42,6 +44,8 @@ const ALIASES: Record<string, string> = {
   "/abanar": "/nudge",
   "/abanoes": "/shake",
   "/tema": "/theme",
+  "/estilo": "/style",
+  "/look": "/style",
   "/entradas": "/joins",
   "/flag": "/bandeira",
   "/amigooculto": "/kamba",
@@ -221,6 +225,10 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (YES.includes(answer)) return { kind: "joins", on: true };
       if (NO.includes(answer)) return { kind: "joins", on: false };
       return usage(w.examples.joins);
+    }
+    case "/style": {
+      const look = lookNamed(firstWord);
+      return look ? { kind: "look", look } : usage(w.examples.look);
     }
     case "/theme": {
       const theme = themeNamed(firstWord);

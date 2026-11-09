@@ -1,10 +1,12 @@
 // The ⚙️ tab: this device's choices as buttons, for people who don't type commands. Every button
 // runs the same command a person could type (/tema claro, /abanoes nao…), so there is one way each
 // choice works, and the chat confirms it as usual.
+import type { Look } from "./look.ts";
 import type { Theme } from "./theme.ts";
 import type { Lang, Words } from "./words.ts";
 
 export type SettingsNow = {
+  look: Look;
   theme: Theme;
   quietJoins: boolean;
   shakeOn: boolean;
@@ -102,6 +104,16 @@ export function Settings({
   return (
     <section class="settings" aria-label={t.title}>
       <p class="tips-intro">{t.intro}</p>
+      <Choice<Look>
+        label={t.look}
+        hint={t.lookHint}
+        options={[
+          { value: "mirc", text: t.mirc },
+          { value: "moderno", text: t.modern },
+        ]}
+        current={now.look}
+        onPick={(v) => run(`/estilo ${v}`)}
+      />
       <Choice<Theme>
         label={t.theme}
         hint={t.themeHint}

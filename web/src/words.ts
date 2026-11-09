@@ -81,6 +81,7 @@ export type Words = {
     tornadoAll: (from: string, channel: string) => string;
     shake: (on: boolean) => string;
     theme: (theme: "escuro" | "claro" | "auto") => string;
+    look: (look: "mirc" | "moderno") => string;
     joins: (shown: boolean) => string;
     cheer: (from: string, club: string) => string;
     sound: (name: string, tornado: boolean) => string;
@@ -108,7 +109,7 @@ export type Words = {
   };
   errors: Record<ErrorCode, (detail: string) => string>;
   usage: (example: string) => string;
-  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins" | "cheer" | "kamba", string>;
+  examples: Record<"nick" | "join" | "me" | "topic" | "colour" | "lang" | "nudge" | "tornado" | "shake" | "sound" | "msg" | "invite" | "private" | "throw" | "notify" | "op" | "deop" | "remove" | "logout" | "home" | "delete" | "theme" | "joins" | "cheer" | "kamba" | "look", string>;
   unknownSound: (name: string, options: readonly string[]) => string;
   channelsOnly: string; // a command that makes no sense in a private chat
   unknownCommand: (command: string) => string;
@@ -123,6 +124,10 @@ export type Words = {
     menu: string; // its name for screen readers: what it opens
     title: string;
     intro: string;
+    look: string;
+    lookHint: string;
+    mirc: string;
+    modern: string;
     theme: string;
     themeHint: string;
     dark: string;
@@ -264,6 +269,10 @@ const pt: Words = {
         claro: "Tema claro neste aparelho ☀️",
         auto: "Tema automático: segue o telemóvel (escuro à noite se o telemóvel estiver assim) 🌗",
       })[t],
+    look: (l) =>
+      l === "moderno"
+        ? "Estilo moderno neste aparelho: iniciais e mensagens agrupadas ✨ (/estilo mirc para voltar)"
+        : "Estilo mIRC neste aparelho: o log clássico 📟",
     cheer: (from, club) => `${from} levantou a bandeira do ${club}! 🚩`,
     joins: (shown) =>
       shown
@@ -335,7 +344,7 @@ const pt: Words = {
     confirm_delete: (d) => `Essa sala tem ${d === "1" ? "1 mensagem" : `${d} mensagens`}, que se perde${d === "1" ? "" : "m"}. Para apagar mesmo: /apagar #sala sim`,
   },
   usage: (u) => `Usa assim: ${u}`,
-  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao", cheer: "/bandeira benfica | porto | sporting | madrid | barca", kamba: "/kamba <código>" },
+  examples: { nick: "/nick <nome>", join: "/join #canal", me: "/me <acção>", topic: "/topico <texto>", colour: "/cor âmbar | azul | verde | coral | violeta", lang: "/lingua pt | en", nudge: "/abanar <nick> | todos", tornado: "/tornado <nick> | todos", shake: "/abanoes sim | nao", sound: "/som <nome>", msg: "/msg <nick> <mensagem>", invite: "/invite <nick> [#canal]", private: "/privado #canal", throw: "/chinela | /vassoura | /mariadasdores <nick>", notify: "/notificacoes sim | nao", op: "/op <nick>", deop: "/deop <nick>", remove: "/expulsar <nick>", logout: "/xau [número]", home: "/principal #sala | -#sala", delete: "/apagar #sala [sim]", theme: "/tema escuro | claro | auto", joins: "/entradas sim | nao", cheer: "/bandeira benfica | porto | sporting | madrid | barca", kamba: "/kamba <código>", look: "/estilo mirc | moderno" },
   unknownSound: (name, options) => `Não há o som ${name}. Tens: ${options.join(" · ")}`,
   channelsOnly: "Isso é só nos canais (aqui é conversa privada)",
   unknownCommand: (c) => `Não conheço o comando ${c}. Tenta /ajuda`,
@@ -350,6 +359,10 @@ const pt: Words = {
     menu: "Dicas e definições",
     title: "Definições",
     intro: "Escolhas deste aparelho. Cada botão faz o mesmo que o comando, e o chat confirma.",
+    look: "Estilo",
+    lookHint: "mIRC é o log clássico; moderno tem iniciais e mensagens agrupadas",
+    mirc: "mIRC",
+    modern: "Moderno",
     theme: "Aspecto",
     themeHint: "Auto segue o telemóvel: escuro à noite se ele estiver assim",
     dark: "Escuro",
@@ -455,6 +468,7 @@ const pt: Words = {
     "/principal #sala — (@) sala onde todos entram 🏠 (/principal -#sala para tirar) · /apagar #sala — (@) apagar uma sala",
     "/privado #canal — criar um canal privado 🔒 · /invite <nick> — deixar alguém entrar",
     "/tema escuro | claro | auto — o aspecto deste aparelho (auto segue o telemóvel)",
+    "/estilo mirc | moderno — o log clássico ou o estilo moderno (iniciais, mensagens agrupadas)",
     "/entradas nao — esconder as linhas de quem chega e sai (/entradas sim para voltar)",
     "/lingua en — English (neste aparelho)",
     "//texto — mandar uma linha que começa com /",
@@ -568,6 +582,10 @@ const en: Words = {
         claro: "Light theme on this device ☀️",
         auto: "Automatic theme: follows your phone's light or dark setting 🌗",
       })[t],
+    look: (l) =>
+      l === "moderno"
+        ? "Modern style on this device: initials and grouped messages ✨ (/style mirc to go back)"
+        : "mIRC style on this device: the classic log 📟",
     cheer: (from, club) => `${from} raised the ${club} flag! 🚩`,
     joins: (shown) =>
       shown
@@ -639,7 +657,7 @@ const en: Words = {
     confirm_delete: (d) => `that room has ${d === "1" ? "1 message" : `${d} messages`}, which will be lost. To delete it anyway: /delete #room yes`,
   },
   usage: (u) => `usage: ${u}`,
-  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off", cheer: "/flag benfica | porto | sporting | madrid | barca", kamba: "/kamba <code>" },
+  examples: { nick: "/nick <name>", join: "/join #channel", me: "/me <action>", topic: "/topic <text>", colour: "/colour amber | blue | green | coral | violet", lang: "/lang pt | en", nudge: "/nudge <nick> | all", tornado: "/tornado <nick> | all", shake: "/shake on | off", sound: "/sound <name>", msg: "/msg <nick> <message>", invite: "/invite <nick> [#channel]", private: "/private #channel", throw: "/slipper | /broom | /spoon <nick>", notify: "/notifications on | off", op: "/op <nick>", deop: "/deop <nick>", remove: "/kick <nick>", logout: "/logout [number]", home: "/home #room | -#room", delete: "/delete #room [yes]", theme: "/theme dark | light | auto", joins: "/joins on | off", cheer: "/flag benfica | porto | sporting | madrid | barca", kamba: "/kamba <code>", look: "/style mirc | modern" },
   unknownSound: (name, options) => `no sound called ${name}. You have: ${options.join(" · ")}`,
   channelsOnly: "that only works in channels (this is a private chat)",
   unknownCommand: (c) => `unknown command ${c} — try /help`,
@@ -654,6 +672,10 @@ const en: Words = {
     menu: "Tips and settings",
     title: "Settings",
     intro: "This device's choices. Each button does what its command does, and the chat confirms it.",
+    look: "Style",
+    lookHint: "mIRC is the classic log; modern has initials and grouped messages",
+    mirc: "mIRC",
+    modern: "Modern",
     theme: "Look",
     themeHint: "Auto follows your phone's light or dark setting",
     dark: "Dark",
@@ -759,6 +781,7 @@ const en: Words = {
     "/home #room — (@) a room everyone joins 🏠 (/home -#room to take it off) · /delete #room — (@) delete a room",
     "/private #channel — make a private channel 🔒 · /invite <nick> — let someone in",
     "/theme dark | light | auto — this device's look (auto follows the phone)",
+    "/style mirc | modern — the classic log or the modern style (initials, grouped messages)",
     "/joins off — hide the arrived and left lines (/joins on to undo)",
     "/lang pt — Angolan Portuguese (on this device)",
     "//text — send a line that starts with /",
