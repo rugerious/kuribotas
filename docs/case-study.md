@@ -4,9 +4,13 @@
 
 Kuribotas is a real-time chat for my family and friends, live since 6 November 2026 and used every day. I designed, built and run it on AWS: one person, about 31 hours over six days, 55 pull requests, 195 automated tests, and no inbound port open on the server.
 
-## The problem
+## Why I built it
 
-I wanted a place of our own for the family, with the playfulness of the 2000s chat rooms: channels with topics and slash commands like IRC, statuses and the screen-shaking nudge like the old messengers, working on any phone without an app store, and cheap and safe enough to run for years.
+There was no problem to solve, and there didn't need to be: dreams bring ideas too. I was bored, and I missed the past. Maybe it's *saudade* for the mIRC nights I never lived enough. Maybe I'm a dinosaur building a time capsule. Mostly, I wanted to be proud of building something real and seeing my family use it every day.
+
+Then my daughter sent me: *"uhooooo, this is so cool"*. Nothing in this project made me prouder.
+
+So I built our own place with the playfulness of the 2000s chat rooms: channels with topics and slash commands like IRC, statuses and the screen-shaking nudge like the old messengers, working on any phone without an app store, and cheap and safe enough to run for years.
 
 ## What I built
 
