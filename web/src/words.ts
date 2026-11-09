@@ -86,6 +86,7 @@ export type Words = {
     joins: (shown: boolean) => string;
     cheer: (from: string, club: string) => string;
     logSaved: (channel: string, count: number, cut: boolean) => string;
+    snow: (from: string, channel: string) => string;
     logHeader: (channel: string, when: string, count: number) => string;
     sound: (name: string, tornado: boolean) => string;
     notify: (on: boolean) => string;
@@ -278,6 +279,7 @@ const pt: Words = {
         ? "Estilo moderno neste aparelho: iniciais e mensagens agrupadas ✨ (/estilo mirc para voltar)"
         : "Estilo mIRC neste aparelho: o log clássico 📟",
     cheer: (from, club) => `${from} levantou a bandeira do ${club}! 🚩`,
+    snow: (from, ch) => `${from} fez nevar no ${ch} ❄️`,
     logSaved: (ch, n, cut) =>
       `📜 Log do ${ch} descarregado: ${n} mensage${n === 1 ? "m" : "ns"}${cut ? " (só as mais recentes)" : ""}. Está nas transferências.`,
     logHeader: (ch, when, n) => `Kuribotas · ${ch} · log de ${when} · ${n} mensagens`,
@@ -341,6 +343,7 @@ const pt: Words = {
     batuque_too_soon: (d) => `O batuque ainda está a ecoar 🥁 Espera ${d} s`,
     cheer_too_soon: (d) => `A bandeira ainda está no ar 🚩 Espera ${d} s`,
     log_too_soon: (d) => `O log ainda agora saiu 📜 Espera ${d} s`,
+    snow_too_soon: (d) => `Ainda está a nevar ❄️ Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
     push_invalid: () => "Este aparelho mandou um endereço de notificações que não reconheço. Tenta /notificacoes sim outra vez",
     not_op: () => "Só um @ pode fazer isso",
@@ -419,6 +422,7 @@ const pt: Words = {
         { text: "Chinela, vassoura ou a Maria das Dores", cmd: "/chinela " },
         { text: "Batuque para todos", cmd: "/batuque" },
         { text: "Levantar a bandeira do teu clube (benfica, porto, sporting, madrid, barca)", cmd: "/bandeira " },
+        { text: "Fazer nevar no ecrã de todos na sala (1 por minuto)", cmd: "/neve" },
         { text: "Escolher o som do abanão neste telemóvel", cmd: "/som" },
         { text: "Sem abanões neste aparelho", cmd: "/abanoes nao" },
       ],
@@ -468,6 +472,7 @@ const pt: Words = {
     "/som — o som do abanão neste aparelho (/som 3, /som panelas) · /som tornado — o do tornado",
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/bandeira benfica | porto | sporting | madrid | barca — a bandeira do teu clube no ecrã de todos (1 em 20 s)",
+    "/neve — neve a cair no ecrã de todos na sala ❄️ (1 por minuto)",
     "/log — descarrega a conversa desta sala num ficheiro de texto, como o mIRC (sobe até ao topo para ver mensagens antigas)",
     "/kamba <código> — abre o teu envelope do Kamba Oculto (só tu vês, o código não sai do teu aparelho)",
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
@@ -598,6 +603,7 @@ const en: Words = {
         ? "Modern style on this device: initials and grouped messages ✨ (/style mirc to go back)"
         : "mIRC style on this device: the classic log 📟",
     cheer: (from, club) => `${from} raised the ${club} flag! 🚩`,
+    snow: (from, ch) => `${from} made it snow in ${ch} ❄️`,
     logSaved: (ch, n, cut) =>
       `📜 ${ch} log downloaded: ${n} message${n === 1 ? "" : "s"}${cut ? " (the newest only)" : ""}. It's in your downloads.`,
     logHeader: (ch, when, n) => `Kuribotas · ${ch} · log of ${when} · ${n} messages`,
@@ -661,6 +667,7 @@ const en: Words = {
     batuque_too_soon: (d) => `the drums are still echoing 🥁 wait ${d} s`,
     cheer_too_soon: (d) => `the flag is still flying 🚩 wait ${d} s`,
     log_too_soon: (d) => `the log just went out 📜 wait ${d} s`,
+    snow_too_soon: (d) => `it's still snowing ❄️ wait ${d} s`,
     internal: () => "something went wrong, please try again",
     push_invalid: () => "this device sent a notification address I don't recognise. Try /notifications on again",
     not_op: () => "only an @ can do that",
@@ -739,6 +746,7 @@ const en: Words = {
         { text: "Slipper, broom or the wooden spoon", cmd: "/slipper " },
         { text: "Drums for everyone", cmd: "/drums" },
         { text: "Raise your club's flag (benfica, porto, sporting, madrid, barca)", cmd: "/flag " },
+        { text: "Make it snow on everyone's screen in the room (1 a minute)", cmd: "/snow" },
         { text: "Pick this phone's nudge sound", cmd: "/sound" },
         { text: "No nudges on this device", cmd: "/shake off" },
       ],
@@ -788,6 +796,7 @@ const en: Words = {
     "/sound — this device's nudge sound (/sound 3, /sound panelas) · /sound tornado — the tornado's",
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/flag benfica | porto | sporting | madrid | barca — your club's flag on everyone's screen (1 per 20 s)",
+    "/snow — snow falling on everyone's screen in the room ❄️ (1 a minute)",
     "/log — downloads this room's conversation as a text file, like mIRC (scroll to the top for older messages)",
     "/kamba <code> — opens your Kamba Oculto envelope (only you see it; the code never leaves your device)",
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",

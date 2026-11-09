@@ -674,3 +674,15 @@ test("scrolling up brings older pages; /log sends everything saved, once every 3
   assert.deepEqual(pick(await until(a.c, ofType("error"))), ["log_too_soon", "30"]);
   a.c.ws.close();
 });
+
+test("/neve: snow for the whole channel, once a minute per person", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "snow", channel: "#mujimbo" });
+  assert.deepEqual(await until(b.c, ofType("snow")), { type: "snow", channel: "#mujimbo", from: a.nick });
+  assert.equal((await until(a.c, ofType("snow"))).from, a.nick);
+  send(a.c, { type: "snow", channel: "#mujimbo" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["snow_too_soon", "60"]);
+  a.c.ws.close();
+  b.c.ws.close();
+});

@@ -53,6 +53,7 @@ export type ErrorCode =
   | "batuque_too_soon" // detail = seconds to wait
   | "cheer_too_soon" // one /bandeira every 20 s; detail = seconds to wait
   | "log_too_soon" // one /log every 30 s; detail = seconds to wait
+  | "snow_too_soon" // one /neve a minute; detail = seconds to wait
   | "invite_only" // a private channel: ask a member for /invite
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
@@ -88,6 +89,7 @@ export type ClientMessage =
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
   | { type: "cheer"; channel: string; club: Club } // /bandeira benfica
+  | { type: "snow"; channel: string } // /neve: snow falls on everyone's screen in the room
   | { type: "older"; channel: string; before: number } // scrolled to the top: the messages before this id
   | { type: "log"; channel: string } // /log: the whole saved conversation, to download as a text file
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
@@ -146,6 +148,7 @@ export type ServerMessage =
   | { type: "invited"; channel: string; from: string; to: string } // to the invited person and the inviter
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
   | { type: "cheer"; channel: string; from: string; club: Club } // a club's flag waves across everyone's screen; not saved
+  | { type: "snow"; channel: string; from: string } // /neve: snow on everyone's screen in the room; not saved
   // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").
   | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string; for?: string } // for = whose device code an @ made
   | { type: "links"; tokens: string[]; expiresAt: string } // several person invites at once (/convite 5), one per person

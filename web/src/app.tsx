@@ -248,6 +248,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
   const [big, setBig] = useState<{ emoji: string; move: Move } | null>(null);
   const lastBig = useRef(0);
   const [flag, setFlag] = useState<Club | null>(null);
+  const [snowing, setSnowing] = useState(0); // the snowfall on screen (its key), 0 = none
   const askedDm = useRef(new Set<string>()); // private chats whose saved messages were asked for
   const stateRef = useRef(state); // the latest state, for the socket's event handlers
   stateRef.current = state;
@@ -458,6 +459,15 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     return () => clearTimeout(stop);
   }, [state.burst?.key]);
 
+  // /neve in the open room: snow falls for a few seconds. /abanoes nao: only the line.
+  useEffect(() => {
+    const snow = state.snow;
+    if (snow === null || !shakeOn) return;
+    setSnowing(snow.key);
+    const stop = setTimeout(() => setSnowing(0), SNOW_MS + 200);
+    return () => clearTimeout(stop);
+  }, [state.snow?.key]);
+
   // A club's flag raised in the open room: across the whole screen for a moment. /abanoes nao: only the line.
   useEffect(() => {
     const cheer = state.cheer;
@@ -647,6 +657,13 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
     <div
       class={`app room-${colourOf(state, state.active)}${shaking ? ` shake-${shaking}` : ""}${flying?.atMe ? ` hit-${flying.item}` : ""}`}
     >
+      {snowing !== 0 && (
+        <div key={snowing} class="snow" aria-hidden="true">
+          {FLAKES.map((f) => (
+            <span key={f}>{f % 3 === 0 ? "❅" : "❄"}</span>
+          ))}
+        </div>
+      )}
       {flag && (
         <div class={`cheer cheer-${flag}`} aria-hidden="true">
           <div class="cheer-flag">
@@ -1375,6 +1392,11 @@ function InputBar({
     </>
   );
 }
+
+// /neve: how long the snow falls, and the flakes (each placed by its own nth-child rule in style.css,
+// since the CSP allows no inline styles).
+const SNOW_MS = 7000;
+const FLAKES = Array.from({ length: 36 }, (_, i) => i + 1);
 
 // "domingo, 1 de novembro" / "Sunday, 1 November", in the phone's words.
 function dayName(day: string, lang: Lang): string {

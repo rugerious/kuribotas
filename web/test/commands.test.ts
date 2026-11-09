@@ -242,3 +242,9 @@ test("/convite makes one invite; /convite 5 makes five; anything else shows how"
   assert.equal(parseInput("/convite 11", here, "pt").kind, "error");
   assert.equal(parseInput("/convite muitos", here, "pt").kind, "error");
 });
+
+test("/neve makes it snow in the open room, not in a private chat", () => {
+  assert.deepEqual(parseInput("/neve", here, "pt"), { kind: "send", msg: { type: "snow", channel: here } });
+  assert.deepEqual(parseInput("/snow", here, "en"), { kind: "send", msg: { type: "snow", channel: here } });
+  assert.equal(parseInput("/neve", "Kota", "pt").kind, "error");
+});
