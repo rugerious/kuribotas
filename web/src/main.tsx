@@ -1,9 +1,11 @@
 import { render } from "preact";
 import { Gate } from "./gate.tsx";
+import { applyLook, loadLook } from "./look.ts";
 import { applyTheme, loadTheme } from "./theme.ts";
 
 // The device's look first, so nothing flashes in the wrong colours.
 applyTheme(loadTheme());
+applyLook(loadLook());
 
 const root = document.getElementById("app");
 if (root !== null) render(<Gate />, root);

@@ -1470,3 +1470,280 @@ input:focus-visible {
     100% { box-shadow: inset 0 0 0 0 var(--room); }
   }
 }
+
+/* ── The modern style (/estilo moderno): the A Noite and B Dia screens ──────────────────────────────
+   Same app, same colours per room and per nick; what changes is the voice: the phone's own sans-serif
+   instead of the terminal font, round chips and a pill-shaped message box, and messages as a badge
+   with initials, the name and time above the text, the next lines from the same person tucked under
+   it. Dark is Noite (deep blue-black, no scanlines); light is Dia (warm paper, white bars, tabs
+   underlined instead of chips). The mIRC style above stays untouched: nothing here applies without
+   data-look="moderno" on <html>. */
+html[data-look="moderno"] {
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg: #0e1117;
+  --panel: #0e1117;
+  --surface: #161b24;
+  --border: #232a36;
+  --ink: #e8e6e1;
+  --muted: #8a93a3;
+  --scan: transparent;
+  --event: #151a23;
+}
+html[data-look="moderno"][data-theme="light"] {
+  --bg: #ffffff;
+  --panel: #f7f6f2;
+  --surface: #fbfaf7;
+  --border: #e6e3db;
+  --ink: #1a1d23;
+  --muted: #5e6573;
+  --event: #efede7;
+}
+@media (prefers-color-scheme: light) {
+  html[data-look="moderno"]:not([data-theme]) {
+    --bg: #ffffff;
+    --panel: #f7f6f2;
+    --surface: #fbfaf7;
+    --border: #e6e3db;
+    --ink: #1a1d23;
+    --muted: #5e6573;
+    --event: #efede7;
+  }
+}
+
+html[data-look="moderno"] body,
+html[data-look="moderno"] .log,
+html[data-look="moderno"] .topic,
+html[data-look="moderno"] .people,
+html[data-look="moderno"] .settings,
+html[data-look="moderno"] .tips,
+html[data-look="moderno"] .gate {
+  font-family: var(--sans);
+}
+
+/* Room chips: rounded, the open one filled with the room's colour. */
+html[data-look="moderno"] .tabs {
+  gap: 8px;
+  padding: 10px 12px;
+}
+html[data-look="moderno"] .tab {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--muted);
+  font: 600 13px/1 var(--sans);
+}
+html[data-look="moderno"] .tab.active {
+  background: var(--room);
+  border-color: var(--room);
+  color: var(--panel);
+}
+html[data-look="moderno"] .badge {
+  border-radius: 9px;
+  font: 700 11px/1.5 var(--sans);
+}
+html[data-look="moderno"] .tab.active .badge {
+  background: var(--panel);
+  color: var(--room);
+}
+
+/* The topic and the people button */
+html[data-look="moderno"] .topic {
+  font-size: 13px;
+}
+html[data-look="moderno"] .label {
+  letter-spacing: 0.08em;
+}
+html[data-look="moderno"] .people-toggle {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 12px/1 var(--sans);
+  letter-spacing: 0;
+}
+
+/* Messages */
+html[data-look="moderno"] .log {
+  padding: 8px 16px 16px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.m-line {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 10px;
+  margin-top: 14px;
+}
+.m-cont {
+  margin-top: 3px;
+}
+.m-cont .m-text {
+  grid-column: 2;
+}
+.m-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: currentColor;
+  display: grid;
+  place-items: center;
+}
+.m-badge b {
+  color: var(--panel);
+  font: 700 13px/1 var(--sans);
+  letter-spacing: 0.02em;
+}
+.m-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.m-head .nick {
+  font-weight: 600;
+  font-size: 14px;
+}
+.m-time {
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+.m-text {
+  margin: 0;
+  color: var(--ink);
+  min-width: 0;
+}
+.m-action .m-text {
+  align-self: center;
+  font-style: italic;
+}
+/* *** lines become a quiet pill in the middle */
+.m-event {
+  display: table;
+  max-width: 90%;
+  margin: 14px auto 0;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--event);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.m-event.error {
+  color: var(--error);
+}
+
+html[data-look="moderno"] .typing {
+  padding-left: 62px;
+  font: italic 12px var(--sans);
+  border-top: 0;
+}
+
+/* The bottom: a round emoji button, a pill-shaped box, a round send button */
+html[data-look="moderno"] .input {
+  padding: 8px 12px 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+html[data-look="moderno"] .input input {
+  border-radius: 22px;
+  padding: 0 16px;
+  font: 16px var(--sans);
+}
+html[data-look="moderno"] .input button[type="submit"] {
+  border-radius: 22px;
+  font: 600 14px var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+html[data-look="moderno"] .emoji-toggle {
+  border: 0;
+  border-radius: 22px;
+  background: var(--surface);
+}
+html[data-look="moderno"] .emoji-bar,
+html[data-look="moderno"] .complete-bar {
+  border-top: 0;
+}
+html[data-look="moderno"] .emoji-bar button {
+  border-radius: 12px;
+}
+html[data-look="moderno"] .complete {
+  border-radius: 18px;
+  font: 600 14px var(--sans);
+}
+
+/* Settings, tips and the door follow the same shapes */
+html[data-look="moderno"] .seg {
+  gap: 6px;
+}
+html[data-look="moderno"] .seg button,
+html[data-look="moderno"] .seg select {
+  border-radius: 18px;
+  font: 500 14px var(--sans);
+}
+html[data-look="moderno"] .seg button + button,
+html[data-look="moderno"] .seg select + button {
+  border-left: 1px solid var(--border);
+}
+html[data-look="moderno"] .seg button[aria-pressed="true"] {
+  border-color: var(--amber);
+}
+html[data-look="moderno"] .gate input,
+html[data-look="moderno"] .gate button[type="submit"],
+html[data-look="moderno"] .note-editor input,
+html[data-look="moderno"] .note-editor button,
+html[data-look="moderno"] .note-edit-toggle,
+html[data-look="moderno"] .status-pick {
+  border-radius: 22px;
+  font-family: var(--sans);
+}
+
+/* Dia: tabs are words with a line under the open one, on a white bar */
+html[data-look="moderno"][data-theme="light"] .tab {
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+}
+html[data-look="moderno"][data-theme="light"] .tabs {
+  gap: 18px;
+  padding: 4px 16px 0;
+}
+html[data-look="moderno"][data-theme="light"] .tab.active {
+  background: transparent;
+  color: var(--ink);
+  border-bottom-color: var(--room);
+}
+html[data-look="moderno"][data-theme="light"] .tab.active .badge {
+  background: var(--room);
+  color: var(--panel);
+}
+@media (prefers-color-scheme: light) {
+  html[data-look="moderno"]:not([data-theme]) .tab {
+    min-height: 40px;
+    padding: 0 4px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+  }
+  html[data-look="moderno"]:not([data-theme]) .tabs {
+    gap: 18px;
+    padding: 4px 16px 0;
+  }
+  html[data-look="moderno"]:not([data-theme]) .tab.active {
+    background: transparent;
+    color: var(--ink);
+    border-bottom-color: var(--room);
+  }
+  html[data-look="moderno"]:not([data-theme]) .tab.active .badge {
+    background: var(--room);
+    color: var(--panel);
+  }
+}

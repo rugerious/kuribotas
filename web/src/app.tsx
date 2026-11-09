@@ -34,6 +34,7 @@ import { KAMBA_2026 } from "./kamba-envelopes.ts";
 import { Peeker } from "./peeker.tsx";
 import { Puzzle } from "./puzzle.tsx";
 import { Settings } from "./settings.tsx";
+import { applyLook, continues, initials, loadLook, saveLook, type Look } from "./look.ts";
 import { applyTheme, loadTheme, saveTheme, type Theme } from "./theme.ts";
 import { captionFor, pickLang, words, type Lang, type Words } from "./words.ts";
 
@@ -237,6 +238,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false); // the ⚙️ tab folded out into Dicas + Definições
   const setShowTips = (open: boolean): void => setPanel(open ? "tips" : "");
   const [theme, setThemeNow] = useState<Theme>(loadTheme); // for the ⚙️ buttons (applied in main.tsx)
+  const [look, setLookNow] = useState<Look>(loadLook); // the same for the style
   const [prefill, setPrefill] = useState<{ text: string; key: number } | null>(null);
   const [flying, setFlying] = useState<{ item: ThrowItem; atMe: boolean } | null>(null);
   const [big, setBig] = useState<{ emoji: string; move: Move } | null>(null);
@@ -574,6 +576,11 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       case "joins":
         saveQuietJoins(!parsed.on);
         return dispatch({ type: "quietJoins", on: !parsed.on, at: now() });
+      case "look":
+        saveLook(parsed.look);
+        applyLook(parsed.look);
+        setLookNow(parsed.look);
+        return dispatch({ type: "local", text: w.events.look(parsed.look), tone: "info", at: now() });
       case "theme":
         saveTheme(parsed.theme);
         applyTheme(parsed.theme);
@@ -741,6 +748,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
           run={submit}
           listen={(tornado) => playNudge(tornado)}
           now={{
+            look,
             theme,
             quietJoins: state.quietJoins,
             shakeOn,
@@ -795,7 +803,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
       )}
 
       <div class={showTips ? "body hidden" : "body"}>
-        <Log lines={room?.lines ?? []} />
+        <Log lines={room?.lines ?? []} modern={look === "moderno"} />
         {room && !isDm(room.name) && (
           <People
             room={room}
@@ -857,7 +865,7 @@ function Tips({ w, onTry }: { w: Words; onTry: (cmd: string) => void }) {
   );
 }
 
-function Log({ lines }: { lines: Line[] }) {
+function Log({ lines, modern }: { lines: Line[]; modern: boolean }) {
   const end = useRef<HTMLDivElement>(null);
   // Keep the newest line in view, like a terminal.
   useEffect(() => {
@@ -866,9 +874,13 @@ function Log({ lines }: { lines: Line[] }) {
 
   return (
     <section class="log" aria-live="polite">
-      {lines.map((line) => (
-        <LineView key={line.key} line={line} />
-      ))}
+      {lines.map((line, i) =>
+        modern ? (
+          <ModernLine key={line.key} line={line} cont={continues(lines[i - 1], line)} />
+        ) : (
+          <LineView key={line.key} line={line} />
+        ),
+      )}
       <div ref={end} />
     </section>
   );
@@ -892,6 +904,51 @@ function LineView({ line }: { line: Line }) {
   ) : (
     <div class="line">
       <time class="time">[{clock(msg.at)}]</time> &lt;{nick}&gt; {msg.text}
+    </div>
+  );
+}
+
+// The modern style (A Noite / B Dia): a round badge with the person's initials, their name and time
+// above the text, and the next messages from the same person tucked under it. Same data, same
+// colours (c0-c7), still text only.
+function ModernLine({ line, cont }: { line: Line; cont: boolean }) {
+  if (line.kind === "event") {
+    return (
+      <div class={`m-event ${line.tone}`}>
+        {line.text} <time class="m-time">{clock(line.at)}</time>
+      </div>
+    );
+  }
+  const { msg } = line;
+  const colour = nickClass(msg.nick);
+  if (msg.kind === "me") {
+    return (
+      <div class="m-line m-action">
+        <span class={`m-badge ${colour}`} aria-hidden="true">
+          <b>{initials(msg.nick)}</b>
+        </span>
+        <p class="m-text">
+          <span class={`nick ${colour}`}>{msg.nick}</span> {msg.text} <time class="m-time">{clock(msg.at)}</time>
+        </p>
+      </div>
+    );
+  }
+  return cont ? (
+    <div class="m-line m-cont">
+      <p class="m-text">{msg.text}</p>
+    </div>
+  ) : (
+    <div class="m-line">
+      <span class={`m-badge ${colour}`} aria-hidden="true">
+        <b>{initials(msg.nick)}</b>
+      </span>
+      <div class="m-body">
+        <div class="m-head">
+          <span class={`nick ${colour}`}>{msg.nick}</span>
+          <time class="m-time">{clock(msg.at)}</time>
+        </div>
+        <p class="m-text">{msg.text}</p>
+      </div>
     </div>
   );
 }
