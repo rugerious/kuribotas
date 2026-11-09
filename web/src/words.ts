@@ -425,19 +425,22 @@ const pt: Words = {
         { text: "Ver todas as salas, quem está lá e o tópico", cmd: "/salas" },
         { text: "Entrar numa sala (se não existir, nasce)", cmd: "/join #" },
         { text: "Esconder as linhas de quem chega e sai", cmd: "/entradas nao" },
+        { text: "Sobe até ao topo da sala para ver mensagens antigas (até 90 dias)." },
+        { text: "Guardar a conversa desta sala num ficheiro, como o mIRC", cmd: "/log" },
       ],
     },
     {
       title: "O teu estado",
       items: [
         { text: "Toca no estado lá em cima: Na bardea, Já vorto, No biolo (sem som) ou A zongolar (invisível)." },
-        { text: "A tua frase debaixo do nome: toca no ✏️ ou escreve", cmd: "/frase " },
+        { text: "A tua frase debaixo do nome: toca no lápis ou escreve", cmd: "/frase " },
       ],
     },
     {
       title: "Abanões e arsenal",
       items: [
         { text: "Toca num nome em Kambas para privado, abanar ou tornado." },
+        { text: "Uma mensagem só com 😂 🤣 😭 ❤️ 🔥 👏 😡 😱 🇦🇴 ou 🎉 enche o ecrã de todos por um instante." },
         { text: "Abanar a sala toda (uma vez por minuto)", cmd: "/abanar todos" },
         { text: "Chinela, vassoura ou a Maria das Dores", cmd: "/chinela " },
         { text: "Batuque para todos", cmd: "/batuque" },
@@ -464,6 +467,7 @@ const pt: Words = {
         { text: "Nunca abras convites dentro do WhatsApp: toca em ⋮ → Abrir no Chrome (ou Safari)." },
         { text: "Saber quando te chamam, mesmo com a app fechada", cmd: "/notificacoes sim" },
         { text: "Escuro, claro ou igual ao telemóvel", cmd: "/tema auto" },
+        { text: "O estilo moderno (iniciais, mensagens agrupadas) ou o mIRC clássico", cmd: "/estilo moderno" },
         { text: "Saíste sem querer? Pede a um @ um código e mete-o na porta." },
         { text: "Juntar o teu computador ou tablet", cmd: "/aparelho" },
       ],
@@ -472,6 +476,7 @@ const pt: Words = {
       title: "Para @",
       items: [
         { text: "Convidar uma pessoa nova (link para uma pessoa, 7 dias)", cmd: "/convite" },
+        { text: "Vários convites de uma vez, um por pessoa (até 10)", cmd: "/convite 5" },
         { text: "Alguém perdeu a entrada? Um código para essa pessoa", cmd: "/aparelho " },
         { text: "Uma sala onde todos entram", cmd: "/principal #" },
         { text: "Dar @ a alguém", cmd: "/op " },
@@ -769,19 +774,22 @@ const en: Words = {
         { text: "Every room, who's in it and its topic", cmd: "/rooms" },
         { text: "Join a room (it's created if it doesn't exist)", cmd: "/join #" },
         { text: "Hide the arrived and left lines", cmd: "/joins off" },
+        { text: "Scroll to the top of a room for older messages (up to 90 days)." },
+        { text: "Save this room's conversation as a file, like mIRC", cmd: "/log" },
       ],
     },
     {
       title: "Your status",
       items: [
         { text: "Tap the status at the top: Na bardea, Já vorto, No biolo (no sound) or A zongolar (invisible)." },
-        { text: "The line under your name: tap ✏️ or type", cmd: "/note " },
+        { text: "The line under your name: tap the pencil or type", cmd: "/note " },
       ],
     },
     {
       title: "Nudges and the arsenal",
       items: [
         { text: "Tap a name in People for private, nudge or tornado." },
+        { text: "A message that is only 😂 🤣 😭 ❤️ 🔥 👏 😡 😱 🇦🇴 or 🎉 fills everyone's screen for a moment." },
         { text: "Nudge the whole room (once a minute)", cmd: "/nudge all" },
         { text: "Slipper, broom or the wooden spoon", cmd: "/slipper " },
         { text: "Drums for everyone", cmd: "/drums" },
@@ -808,6 +816,7 @@ const en: Words = {
         { text: "Never open invites inside WhatsApp: tap ⋮ → Open in Chrome (or Safari)." },
         { text: "Know when someone calls you, even with the app closed", cmd: "/notifications on" },
         { text: "Dark, light or like the phone", cmd: "/theme auto" },
+        { text: "The modern style (initials, grouped messages) or classic mIRC", cmd: "/style modern" },
         { text: "Signed out by accident? Ask an @ for a code and enter it at the door." },
         { text: "Add your computer or tablet", cmd: "/device" },
       ],
@@ -816,6 +825,7 @@ const en: Words = {
       title: "For @",
       items: [
         { text: "Invite a new person (a link for one person, 7 days)", cmd: "/invitelink" },
+        { text: "Several invites at once, one per person (up to 10)", cmd: "/invitelink 5" },
         { text: "Someone lost their sign-in? A code for them", cmd: "/device " },
         { text: "A room everyone joins", cmd: "/home #" },
         { text: "Give someone @", cmd: "/op " },
