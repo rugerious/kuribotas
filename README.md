@@ -6,7 +6,7 @@
 
 *Kuribota* is Angolan slang for the person who always knows everyone's business. Our main channel is `#mujimbo` — the rumour that travels from mouth to mouth.
 
-> Status: ✅ Phases 0–5 done: **live on AWS** behind a Cloudflare Tunnel, with nightly backups, a backup alarm and a load test behind it, and the family already chatting. Now: polish after launch (the redesign, quieter chat, help inside the app). Target: the whole family on it for Christmas 2026.
+> Status: ✅ **live on AWS since 6 Nov 2026** behind a Cloudflare Tunnel, with nightly backups, a backup alarm and a load test behind it; the family chats on it every day. Polish after launch done (two styles, history and `/log`, help inside the app, December fun). Next: passkeys and a knock at the door. **[Case study](docs/case-study.md)**: what was built, the decisions and the numbers.
 
 ## What it is
 
@@ -35,14 +35,14 @@ New: it is a **PWA** — open an invite link, add it to the home screen, get pus
 | 3 | Phone without effort: PWA, Web Push, reconnection, unread counts | 5–7 | ✅ (~3 h 30) |
 | 4 | Invites and security: invite links, sessions, roles, rate limits | 3–5 | ✅ (~1 h 20) |
 | 5 | Deploy: AWS EC2 t4g.nano (Terraform) + Cloudflare Tunnel, no inbound ports; nightly backups + alarm, load test | 4–7 | ✅ (~5 h) |
-| 4b | After launch, optional: stickers (family packs + our catchphrase pack), `/roll`, `/8ball`, December `/neve`; saved history for private chats | 2–4 | ⏳ |
-| 6 | Write-up | 2–3 | ⏳ |
+| 4b | After launch: two styles, drawn icons, history and `/log`, group invites, `/roll`, `/8ball`, December `/neve`, private chats kept 3 days, help inside the app (stickers dropped) | 2–4 | ✅ (~4 h) |
+| 6 | Write-up: [case study](docs/case-study.md) | 2–3 | ✅ |
 
 MVP: 28–42 h. 4b was planned right after accounts and moved after launch on purpose: a live app for the family came first.
 
 ## What is built so far
 
-- **TypeScript monorepo** with npm workspaces: `server/` and `web/` (placeholder until the frontend is chosen).
+- **TypeScript monorepo** with npm workspaces: `server/`, `web/` (Preact, bundled by esbuild) and `shared/` (the chat protocol both sides use).
 - **No build step:** Node 26 runs `.ts` files directly by stripping types; `tsc` runs as a type checker only (`erasableSyntaxOnly`, `strict`).
 - **One command for quality:** `npm run check` = type check + ESLint + tests (Node's built-in test runner).
 - **Server:** one port for HTTP and WebSocket. `GET /healthz` → `200 {"status":"ok"}`, `GET /push/key` → the server's public key for notifications, other paths `404`; WebSocket upgrades only on `/ws`. Graceful shutdown on `SIGTERM`: chat clients get close code 1001, stragglers are force-closed after 3 s.
@@ -182,7 +182,7 @@ Anything malformed is ignored. Frames over 16 KiB close that client with code 10
 
 POSTs need `Content-Type: application/json` and our own `Origin` (else `403 forbidden`).
 
-## Planned architecture
+## Architecture
 
 ~~~
 Phone (PWA) ──HTTPS/WSS──▶ Cloudflare ◀──outbound tunnel── AWS EC2 t4g.nano (no inbound ports)
