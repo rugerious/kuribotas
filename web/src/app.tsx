@@ -29,6 +29,8 @@ import { CHEER_MS, CLUB } from "./cheer.ts";
 import { complete, completions } from "./complete.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
 import { showCode } from "./invite.ts";
+import { openEnvelope } from "./kamba.ts";
+import { KAMBA_2026 } from "./kamba-envelopes.ts";
 import { Peeker } from "./peeker.tsx";
 import { Puzzle } from "./puzzle.tsx";
 import { Settings } from "./settings.tsx";
@@ -544,6 +546,14 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
             say(w.events.notify(true));
           })
           .catch(() => say(w.events.notifyUnsupported, "error"));
+        return;
+      }
+      case "kamba": {
+        const say = (text: string, tone: "info" | "error" = "info") => dispatch({ type: "local", text, tone, at: now() });
+        say(w.kamba.opening);
+        openEnvelope(parsed.code, KAMBA_2026)
+          .then((p) => (p ? say(w.kamba.opened(p.nome, p.oferece, p.criancas)) : say(w.kamba.wrong, "error")))
+          .catch(() => say(w.kamba.wrong, "error"));
         return;
       }
       case "openDm":
