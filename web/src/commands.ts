@@ -21,6 +21,7 @@ export type Parsed =
   | { kind: "closeDm"; nick: string } // close a private chat tab
   | { kind: "notify"; on: boolean } // notifications on this device
   | { kind: "logout" } // sign this device out (/xau)
+  | { kind: "kamba"; code: string } // open your Kamba Oculto envelope on this device; the code is never sent
   | { kind: "error"; text: string }
   | { kind: "nothing" };
 
@@ -43,6 +44,8 @@ const ALIASES: Record<string, string> = {
   "/tema": "/theme",
   "/entradas": "/joins",
   "/flag": "/bandeira",
+  "/amigooculto": "/kamba",
+  "/secretsanta": "/kamba",
   "/abanões": "/shake",
   "/som": "/sound",
   "/m": "/msg",
@@ -207,6 +210,8 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       if (NO.includes(answer)) return { kind: "shake", on: false };
       return usage(w.examples.shake);
     }
+    case "/kamba":
+      return rest ? { kind: "kamba", code: rest } : usage(w.examples.kamba);
     case "/bandeira": {
       const club = clubNamed(rest);
       return club ? send({ type: "cheer", channel, club }) : usage(w.examples.cheer);
