@@ -120,7 +120,6 @@ export type Words = {
   };
   help: readonly string[];
   settings: {
-    tab: string; // the first tab's icon
     menu: string; // its name for screen readers: what it opens
     title: string;
     intro: string;
@@ -193,7 +192,7 @@ const pt: Words = {
     tornado: (nick) => `Mandar um tornado a ${nick}`,
     actions: { dm: "privado", nudge: "abanar", tornado: "tornado" },
     complete: "Nicks parecidos",
-    tipsTab: "💡 Dicas",
+    tipsTab: "Dicas",
     tipsIntro: "Toca numa dica com comando e ela vai para a caixa da mensagem: é só experimentar.",
     tipsTry: "toca para experimentar",
     editNote: "Mudar a tua frase",
@@ -355,7 +354,6 @@ const pt: Words = {
       [`🎅 Olá, ${name}! Tu ofereces a ${to}`, ...kids.map((k) => `${k.nome} oferece a ${k.oferece}`)].join(" · "),
   },
   settings: {
-    tab: "⚙️",
     menu: "Dicas e definições",
     title: "Definições",
     intro: "Escolhas deste aparelho. Cada botão faz o mesmo que o comando, e o chat confirma.",
@@ -507,7 +505,7 @@ const en: Words = {
     tornado: (nick) => `Send ${nick} a tornado`,
     actions: { dm: "private", nudge: "nudge", tornado: "tornado" },
     complete: "Matching nicks",
-    tipsTab: "💡 Tips",
+    tipsTab: "Tips",
     tipsIntro: "Tap a tip with a command and it goes into the message box: just try it.",
     tipsTry: "tap to try",
     editNote: "Change your note",
@@ -668,7 +666,6 @@ const en: Words = {
       [`🎅 Hi, ${name}! You give to ${to}`, ...kids.map((k) => `${k.nome} gives to ${k.oferece}`)].join(" · "),
   },
   settings: {
-    tab: "⚙️",
     menu: "Tips and settings",
     title: "Settings",
     intro: "This device's choices. Each button does what its command does, and the chat confirms it.",

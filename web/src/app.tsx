@@ -28,6 +28,7 @@ import { BURST_GAP_MS, BURST_MS, type Move } from "./burst.ts";
 import { CHEER_MS, CLUB } from "./cheer.ts";
 import { complete, completions } from "./complete.ts";
 import { FAMILY_EMOJI } from "./emoji.ts";
+import { Icon } from "./icons.tsx";
 import { showCode } from "./invite.ts";
 import { openEnvelope } from "./kamba.ts";
 import { KAMBA_2026 } from "./kamba-envelopes.ts";
@@ -658,7 +659,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
               disabled={!online}
               onClick={() => setEditingNote(!editingNote)}
             >
-              ✏️
+              <Icon name="edit" />
             </button>
             <select
               id="status"
@@ -703,7 +704,8 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
             setMenuOpen(!menuOpen);
           }}
         >
-          {w.settings.tab}<span aria-hidden="true">{menuOpen ? "‹" : "›"}</span>
+          <Icon name="gear" />
+          <Icon name={menuOpen ? "close" : "open"} />
         </button>
         {menuOpen && (
           <span id="menu-tabs" class="menu-tabs">
@@ -713,7 +715,7 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
               aria-current={panel === "tips" ? "page" : undefined}
               onClick={() => setPanel("tips")}
             >
-              {w.ui.tipsTab}
+              <Icon name="tips" /> {w.ui.tipsTab}
             </button>
             <button
               type="button"
@@ -736,7 +738,8 @@ export function App({ onSignedOut }: { onSignedOut: () => void }) {
               dispatch({ type: "focus", channel: r.name });
             }}
           >
-            {isDm(r.name) ? `💬 ${r.name}` : r.private ? `🔒 ${r.name}` : r.name}
+            {isDm(r.name) ? <Icon name="chat" /> : r.private ? <Icon name="lock" /> : null}
+            {r.name}
             {r.unread > 0 && <span class="badge">{r.unread}</span>}
           </button>
         ))}
@@ -1044,7 +1047,7 @@ function PersonRow({
             title={w.ui.dm(member.nick)}
             onClick={() => onDm(member.nick)}
           >
-            <span aria-hidden="true">💬</span> {w.ui.actions.dm}
+            <Icon name="chat" /> {w.ui.actions.dm}
           </button>
           <button
             type="button"
@@ -1054,7 +1057,7 @@ function PersonRow({
             disabled={!canNudge}
             onClick={() => onNudge(member.nick, false)}
           >
-            <span aria-hidden="true">📳</span> {w.ui.actions.nudge}
+            <Icon name="nudge" /> {w.ui.actions.nudge}
           </button>
           <button
             type="button"
@@ -1064,7 +1067,7 @@ function PersonRow({
             disabled={!canNudge}
             onClick={() => onNudge(member.nick, true)}
           >
-            <span aria-hidden="true">🌪️</span> {w.ui.actions.tornado}
+            <Icon name="tornado" /> {w.ui.actions.tornado}
           </button>
         </span>
       )}
@@ -1242,7 +1245,7 @@ function InputBar({
         disabled={disabled}
         onClick={() => setShowEmoji(!showEmoji)}
       >
-        😀
+        <Icon name="smile" />
       </button>
       <label class="visually-hidden" for="message">
         {w.ui.messageTo(channel)}
