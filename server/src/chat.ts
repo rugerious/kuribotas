@@ -20,6 +20,7 @@ type Someone = {
   thrownAt: number[]; // recent chinelas, vassouras and colheres
   batuqueAt: number | undefined; // the last batuque
   cheerAt: number | undefined; // the last /bandeira
+  logAt: number | undefined; // the last /log
   saidAt: number[]; // their recent messages (channels and DMs), to stop a flood
 };
 
@@ -63,6 +64,9 @@ class Member {
 const HOME_CHANNEL = "#mujimbo"; // where the app opens (and the first home room)
 const HISTORY_LIMIT = 50; // messages sent when joining a channel
 const DM_HISTORY_LIMIT = 100; // private messages sent when a private chat tab opens
+const OLDER_PAGE = 100; // messages per scroll to the top
+const LOG_LIMIT = 20_000; // /log sends at most this many (90 days of a busy family is far less)
+const LOG_EVERY_MS = 30_000; // one /log every 30 s per person: it's the heaviest thing anyone can ask
 const DM_TABS_DAYS = 3; // private chats with messages this recent reopen as tabs on arrival
 const DM_TABS_MAX = 6;
 const MAX_TEXT_LENGTH = 2000; // characters per chat message
@@ -165,6 +169,7 @@ export function attachChat(
       thrownAt: [],
       batuqueAt: undefined,
       cheerAt: undefined,
+      logAt: undefined,
       saidAt: [],
     };
     people.set(person.id, who);
@@ -322,6 +327,29 @@ export function attachChat(
         const them = people.get(target.id);
         if (them !== undefined) sendPerson(them, dm); // every device of theirs that is online…
         if (them !== who) sendPerson(who, dm); // …and of mine
+        return;
+      }
+      case "older": {
+        // Scrolled to the top of a room: the next page back. Only for rooms this device is in.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        const page = store.messagesBefore(channel, msg.before, OLDER_PAGE + 1);
+        const more = page.length > OLDER_PAGE;
+        send(me, { type: "older", channel, messages: more ? page.slice(1) : page, more });
+        return;
+      }
+      case "log": {
+        // /log, like mIRC's logs: everything still saved (90 days; 3 in a private room), newest
+        // LOG_LIMIT at most. The device turns it into a text file; nothing is written on the server.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        const now = Date.now();
+        const wait = me.who.logAt === undefined ? 0 : me.who.logAt + LOG_EVERY_MS - now;
+        if (wait > 0) return reject(me, "log_too_soon", seconds(wait), "one /log every 30 s");
+        me.who.logAt = now;
+        const all = store.recentMessages(channel, LOG_LIMIT + 1);
+        const cut = all.length > LOG_LIMIT;
+        send(me, { type: "log", channel, messages: cut ? all.slice(1) : all, cut });
         return;
       }
       case "dm_history": {
@@ -928,6 +956,17 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
         return undefined;
       }
       return { type: "push", subscription: { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } }, lang };
+    }
+    case "older": {
+      const channel = str("channel");
+      const before = v.before;
+      return channel === undefined || typeof before !== "number" || !Number.isInteger(before) || before < 1
+        ? undefined
+        : { type: "older", channel, before };
+    }
+    case "log": {
+      const channel = str("channel");
+      return channel === undefined ? undefined : { type: "log", channel };
     }
     case "dm_history": {
       const other = str("with");

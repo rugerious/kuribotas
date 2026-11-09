@@ -1785,3 +1785,18 @@ html[data-look="moderno"][data-theme="light"] .tab.active .badge {
   height: 22px;
   vertical-align: middle;
 }
+
+/* Above a room's oldest saved message (scrolling up asks the server for older ones until this shows) */
+.log-start {
+  margin: 4px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.log-day {
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  letter-spacing: 0.04em;
+}

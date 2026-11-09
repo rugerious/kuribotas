@@ -7,7 +7,8 @@ import { words, type Lang } from "./words.ts";
 // It is plain data and a pure function, so it is tested without a browser.
 
 export const HOME_CHANNEL = "#mujimbo";
-const MAX_LINES = 500; // per room, so a long day doesn't slow the phone down
+export const MAX_LINES = 500; // per room, so a long day doesn't slow the phone down
+const HISTORY_PAGE = 50; // what the server sends on joining (HISTORY_LIMIT): fewer means that is all there is
 // "is typing" stays this long after the last notice. Senders repeat it every 3 s while typing,
 // so it only runs out when someone stops (or their phone loses signal).
 export const TYPING_SHOWN_MS = 6000;
@@ -28,6 +29,7 @@ export type Room = {
   unread: number;
   typing: { nick: string; until: number }[]; // who is typing here, and until when (ms)
   private: boolean; // a private channel 🔒, or a DM: nothing in it is saved on the server
+  more: boolean; // older messages are still saved on the server (scroll up for them)
 };
 
 // A DM's room is named after the other person (no "#"); channels always start with "#".
@@ -217,6 +219,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
         unread: 0,
         typing: [],
         private: msg.private,
+        more: msg.history.length >= HISTORY_PAGE,
       };
       let next: State = {
         ...state,
@@ -454,6 +457,16 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       return addEvent({ ...state, rooms, active, known }, active, w.events.roomDeleted(msg.channel, msg.by), at, "info");
     }
 
+    case "older": {
+      // An older page, from scrolling to the top: it goes before what is on screen (once each).
+      const room = state.rooms.find((r) => r.name === msg.channel);
+      if (room === undefined) return state;
+      const have = new Set(room.lines.map((l) => (l.kind === "message" ? l.msg.id : -1)));
+      let seq = state.seq;
+      const older: Line[] = msg.messages.filter((m) => !have.has(m.id)).map((m) => ({ kind: "message", key: ++seq, msg: m }));
+      return updateRoom({ ...state, seq }, msg.channel, (r) => ({ ...r, lines: [...older, ...r.lines], more: msg.more }));
+    }
+    case "log":
     case "link":
     case "devices":
     case "rooms":
@@ -469,7 +482,7 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
 // Makes sure there is a tab for a private chat with this person.
 function withDm(state: State, nick: string): State {
   if (state.rooms.some((r) => r.name === nick)) return state;
-  const room: Room = { name: nick, topic: "", members: [], lines: [], unread: 0, typing: [], private: true };
+  const room: Room = { name: nick, topic: "", members: [], lines: [], unread: 0, typing: [], private: true, more: false };
   return { ...state, rooms: [...state.rooms, room] };
 }
 

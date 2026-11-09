@@ -31,6 +31,7 @@ export type Words = {
     actions: { dm: string; nudge: string; tornado: string }; // short words beside the icons
     complete: string; // the row of nicks offered while typing
     tipsTab: string;
+    historyStart: string; // above the oldest saved message of a room
     tipsIntro: string;
     tipsTry: string; // on a tip with a command: tap to try it
     editNote: string; // the ✏️ button
@@ -84,6 +85,8 @@ export type Words = {
     look: (look: "mirc" | "moderno") => string;
     joins: (shown: boolean) => string;
     cheer: (from: string, club: string) => string;
+    logSaved: (channel: string, count: number, cut: boolean) => string;
+    logHeader: (channel: string, when: string, count: number) => string;
     sound: (name: string, tornado: boolean) => string;
     notify: (on: boolean) => string;
     notifyUnsupported: string;
@@ -193,6 +196,7 @@ const pt: Words = {
     actions: { dm: "privado", nudge: "abanar", tornado: "tornado" },
     complete: "Nicks parecidos",
     tipsTab: "Dicas",
+    historyStart: "Início do que está guardado (90 dias; 3 numa sala privada)",
     tipsIntro: "Toca numa dica com comando e ela vai para a caixa da mensagem: é só experimentar.",
     tipsTry: "toca para experimentar",
     editNote: "Mudar a tua frase",
@@ -273,6 +277,9 @@ const pt: Words = {
         ? "Estilo moderno neste aparelho: iniciais e mensagens agrupadas ✨ (/estilo mirc para voltar)"
         : "Estilo mIRC neste aparelho: o log clássico 📟",
     cheer: (from, club) => `${from} levantou a bandeira do ${club}! 🚩`,
+    logSaved: (ch, n, cut) =>
+      `📜 Log do ${ch} descarregado: ${n} mensage${n === 1 ? "m" : "ns"}${cut ? " (só as mais recentes)" : ""}. Está nas transferências.`,
+    logHeader: (ch, when, n) => `Kuribotas · ${ch} · log de ${when} · ${n} mensagens`,
     joins: (shown) =>
       shown
         ? "As linhas de quem chega e sai voltam a aparecer neste aparelho"
@@ -330,6 +337,7 @@ const pt: Words = {
     throw_too_soon: (d) => `Calma com a chinela! Espera ${d} s`,
     batuque_too_soon: (d) => `O batuque ainda está a ecoar 🥁 Espera ${d} s`,
     cheer_too_soon: (d) => `A bandeira ainda está no ar 🚩 Espera ${d} s`,
+    log_too_soon: (d) => `O log ainda agora saiu 📜 Espera ${d} s`,
     internal: () => "Deu maka. Tenta outra vez.",
     push_invalid: () => "Este aparelho mandou um endereço de notificações que não reconheço. Tenta /notificacoes sim outra vez",
     not_op: () => "Só um @ pode fazer isso",
@@ -457,6 +465,7 @@ const pt: Words = {
     "/som — o som do abanão neste aparelho (/som 3, /som panelas) · /som tornado — o do tornado",
     "/chinela · /vassoura · /mariadasdores <nick> — atirar 🩴🧹 e a colher de pau (3 em 10 s) · /batuque — 🥁 para todos (1 por minuto)",
     "/bandeira benfica | porto | sporting | madrid | barca — a bandeira do teu clube no ecrã de todos (1 em 20 s)",
+    "/log — descarrega a conversa desta sala num ficheiro de texto, como o mIRC (sobe até ao topo para ver mensagens antigas)",
     "/kamba <código> — abre o teu envelope do Kamba Oculto (só tu vês, o código não sai do teu aparelho)",
     "/notificacoes sim — avisos com a app fechada quando te chamam ou te abanam 🔔 (/notificacoes nao para parar)",
     "/msg <nick> [mensagem] — conversa privada 💬 (guardada 3 dias; chega mesmo a quem não está cá)",
@@ -506,6 +515,7 @@ const en: Words = {
     actions: { dm: "private", nudge: "nudge", tornado: "tornado" },
     complete: "Matching nicks",
     tipsTab: "Tips",
+    historyStart: "Start of what is saved (90 days; 3 in a private room)",
     tipsIntro: "Tap a tip with a command and it goes into the message box: just try it.",
     tipsTry: "tap to try",
     editNote: "Change your note",
@@ -585,6 +595,9 @@ const en: Words = {
         ? "Modern style on this device: initials and grouped messages ✨ (/style mirc to go back)"
         : "mIRC style on this device: the classic log 📟",
     cheer: (from, club) => `${from} raised the ${club} flag! 🚩`,
+    logSaved: (ch, n, cut) =>
+      `📜 ${ch} log downloaded: ${n} message${n === 1 ? "" : "s"}${cut ? " (the newest only)" : ""}. It's in your downloads.`,
+    logHeader: (ch, when, n) => `Kuribotas · ${ch} · log of ${when} · ${n} messages`,
     joins: (shown) =>
       shown
         ? "Arrived and left lines are back on this device"
@@ -642,6 +655,7 @@ const en: Words = {
     throw_too_soon: (d) => `easy with the slipper! wait ${d} s`,
     batuque_too_soon: (d) => `the drums are still echoing 🥁 wait ${d} s`,
     cheer_too_soon: (d) => `the flag is still flying 🚩 wait ${d} s`,
+    log_too_soon: (d) => `the log just went out 📜 wait ${d} s`,
     internal: () => "something went wrong, please try again",
     push_invalid: () => "this device sent a notification address I don't recognise. Try /notifications on again",
     not_op: () => "only an @ can do that",
@@ -769,6 +783,7 @@ const en: Words = {
     "/sound — this device's nudge sound (/sound 3, /sound panelas) · /sound tornado — the tornado's",
     "/slipper · /broom · /spoon <nick> — throw 🩴🧹🥄 (3 per 10 s) · /drums — 🥁 for everyone (once a minute)",
     "/flag benfica | porto | sporting | madrid | barca — your club's flag on everyone's screen (1 per 20 s)",
+    "/log — downloads this room's conversation as a text file, like mIRC (scroll to the top for older messages)",
     "/kamba <code> — opens your Kamba Oculto envelope (only you see it; the code never leaves your device)",
     "/notifications on — get told with the app closed when someone calls you or nudges you 🔔 (off to stop)",
     "/msg <nick> [message] — private chat 💬 (kept 3 days; reaches people who are away too)",

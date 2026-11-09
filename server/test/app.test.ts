@@ -648,3 +648,29 @@ test("a club flag waves for the whole channel, once every 20 s; an unknown club 
   a.c.ws.close();
   b.c.ws.close();
 });
+
+test("scrolling up brings older pages; /log sends everything saved, once every 30 s", limits, async () => {
+  const a = await arrive();
+  const room = `#arquivo-${Date.now()}`;
+  app.store.createRoom(room, new Date().toISOString(), false);
+  for (let i = 1; i <= 130; i++) app.store.addMessage({ channel: room, nick: "Mais_Velho", kind: "say", text: `linha ${i}`, at: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString() });
+  send(a.c, { type: "join", channel: room });
+  const joined = await until(a.c, (m) => m.type === "joined" && m.channel === room);
+  const history = joined.history as Msg[];
+  assert.equal(history.length, 50);
+  assert.equal(history[0]!.text, "linha 81");
+  send(a.c, { type: "older", channel: room, before: Number(history[0]!.id) });
+  const page = await until(a.c, ofType("older"));
+  assert.equal((page.messages as Msg[]).length, 80); // all that is left, oldest first
+  assert.equal((page.messages as Msg[])[0]!.text, "linha 1");
+  assert.equal(page.more, false);
+  send(a.c, { type: "older", channel: "#nao-estou-la", before: 5 });
+  assert.equal((await until(a.c, ofType("error"))).code, "join_first");
+  send(a.c, { type: "log", channel: room });
+  const log = await until(a.c, ofType("log"));
+  assert.equal((log.messages as Msg[]).length, 130);
+  assert.equal(log.cut, false);
+  send(a.c, { type: "log", channel: room });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["log_too_soon", "30"]);
+  a.c.ws.close();
+});

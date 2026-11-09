@@ -52,6 +52,7 @@ export type ErrorCode =
   | "throw_too_soon" // detail = seconds to wait
   | "batuque_too_soon" // detail = seconds to wait
   | "cheer_too_soon" // one /bandeira every 20 s; detail = seconds to wait
+  | "log_too_soon" // one /log every 30 s; detail = seconds to wait
   | "invite_only" // a private channel: ask a member for /invite
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
@@ -87,6 +88,8 @@ export type ClientMessage =
   | { type: "invite"; channel: string; nick: string } // let someone into a private channel (/invite Kota)
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
   | { type: "cheer"; channel: string; club: Club } // /bandeira benfica
+  | { type: "older"; channel: string; before: number } // scrolled to the top: the messages before this id
+  | { type: "log"; channel: string } // /log: the whole saved conversation, to download as a text file
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
   | { type: "push"; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } | null; lang: "pt" | "en" }
   | { type: "make_invite" } // an @ makes an invite link for a new person (/convite)
@@ -123,6 +126,8 @@ export type ApiError = {
 export type ServerMessage =
   | { type: "welcome"; nick: string; role: Role; channels: Channel[]; dms?: string[] } // dms: people with recent private messages (their tabs reopen)
   | { type: "joined"; channel: string; topic: string; members: Member[]; history: ChatMessage[]; private: boolean }
+  | { type: "older"; channel: string; messages: ChatMessage[]; more: boolean } // oldest first; more = there are older still
+  | { type: "log"; channel: string; messages: ChatMessage[]; cut: boolean } // oldest first; cut = only the newest LOG_LIMIT
   | { type: "join"; channel: string; nick: string } // arrives as online with no note; a presence may follow
   | { type: "part"; channel: string; nick: string }
   | { type: "quit"; nick: string }
