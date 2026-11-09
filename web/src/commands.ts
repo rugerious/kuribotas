@@ -48,6 +48,7 @@ const ALIASES: Record<string, string> = {
   "/look": "/style",
   "/entradas": "/joins",
   "/flag": "/bandeira",
+  "/snow": "/neve",
   "/amigooculto": "/kamba",
   "/secretsanta": "/kamba",
   "/abanões": "/shake",
@@ -78,7 +79,7 @@ const ALIASES: Record<string, string> = {
 };
 
 // In a private chat these make no sense (they belong to channels).
-const CHANNEL_ONLY = ["/log", "/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque", "/bandeira"];
+const CHANNEL_ONLY = ["/log", "/topic", "/invite", "/chinela", "/vassoura", "/colher", "/batuque", "/bandeira", "/neve"];
 
 // The family's arsenal, in both languages.
 const THROWS: Record<string, ThrowItem> = {
@@ -224,6 +225,8 @@ export function parseInput(input: string, channel: string, lang: Lang): Parsed {
       return send({ type: "log", channel });
     case "/kamba":
       return rest ? { kind: "kamba", code: rest } : usage(w.examples.kamba);
+    case "/neve":
+      return send({ type: "snow", channel });
     case "/bandeira": {
       const club = clubNamed(rest);
       return club ? send({ type: "cheer", channel, club }) : usage(w.examples.cheer);

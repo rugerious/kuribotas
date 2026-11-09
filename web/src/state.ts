@@ -54,6 +54,7 @@ export type State = {
   thrown: { key: number; item: ThrowItem; atMe: boolean } | null; // the last thing flying across the open channel
   burst: { key: number; emoji: string; move: Move } | null; // the last big emoji said live in the open room
   cheer: { key: number; club: Club } | null; // the last club flag raised in the open room
+  snow: { key: number } | null; // the last snowfall in the open room
   seq: number; // gives every line a unique key
   quietJoins: boolean; // this device hides "chegou / saiu" lines in channels (/entradas nao)
 };
@@ -86,6 +87,7 @@ export const initialState: State = {
   thrown: null,
   burst: null,
   cheer: null,
+  snow: null,
   seq: 0,
   quietJoins: false,
 };
@@ -402,6 +404,11 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       if (msg.channel !== state.active) return next;
       const atMe = msg.to === null || msg.to === state.nick;
       return { ...next, thrown: { key: next.seq, item: msg.item, atMe } };
+    }
+
+    case "snow": {
+      const next = addEvent(state, msg.channel, w.events.snow(msg.from, msg.channel), at, "info");
+      return msg.channel === state.active ? { ...next, snow: { key: next.seq } } : next;
     }
 
     case "cheer": {

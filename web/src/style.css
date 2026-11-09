@@ -1450,7 +1450,8 @@ input:focus-visible {
   }
   /* Less motion asked for: the line in the chat is enough. */
   .burst,
-  .cheer {
+  .cheer,
+  .snow {
     display: none; /* less motion asked for: the emoji or the flag stays a line in the chat */
   }
   .throw,
@@ -1800,3 +1801,82 @@ html[data-look="moderno"][data-theme="light"] .tab.active .badge {
   text-align: center;
   letter-spacing: 0.04em;
 }
+
+/* /neve: 36 flakes fall across the whole screen for about 7 s and melt away. Plain text characters in a
+   colour from the theme (white on dark, a winter blue on light); each flake's place, size and speed is
+   fixed below (no inline styles under the CSP). */
+:root {
+  --snow: #f4f8ff;
+}
+html[data-theme="light"] {
+  --snow: #7fa6c9;
+}
+@media (prefers-color-scheme: light) {
+  html:not([data-theme]) {
+    --snow: #7fa6c9;
+  }
+}
+.snow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 11;
+  animation: snow-out 7s linear forwards;
+}
+.snow span {
+  position: absolute;
+  top: -40px;
+  color: var(--snow);
+  text-shadow: 0 0 6px rgba(127, 166, 201, 0.5);
+  line-height: 1;
+  animation-name: snow-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: 2;
+  animation-fill-mode: backwards;
+}
+@keyframes snow-fall {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(var(--drift), 55vh) rotate(90deg); }
+  100% { transform: translate(0, 110vh) rotate(180deg); }
+}
+@keyframes snow-out {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.snow span:nth-child(1) { left: 37.2%; font-size: 14px; animation-delay: 2.41s; animation-duration: 5.26s; --drift: -8px; }
+.snow span:nth-child(2) { left: 62.1%; font-size: 16px; animation-delay: 0.11s; animation-duration: 5.50s; --drift: -30px; }
+.snow span:nth-child(3) { left: 30.4%; font-size: 12px; animation-delay: 1.10s; animation-duration: 4.69s; --drift: 18px; }
+.snow span:nth-child(4) { left: 66.9%; font-size: 22px; animation-delay: 2.16s; animation-duration: 4.53s; --drift: -8px; }
+.snow span:nth-child(5) { left: 80.2%; font-size: 18px; animation-delay: 0.47s; animation-duration: 4.19s; --drift: 18px; }
+.snow span:nth-child(6) { left: 11.0%; font-size: 12px; animation-delay: 2.53s; animation-duration: 4.80s; --drift: 18px; }
+.snow span:nth-child(7) { left: 56.9%; font-size: 14px; animation-delay: 1.08s; animation-duration: 3.82s; --drift: 18px; }
+.snow span:nth-child(8) { left: 45.2%; font-size: 22px; animation-delay: 0.18s; animation-duration: 4.64s; --drift: 30px; }
+.snow span:nth-child(9) { left: 13.2%; font-size: 14px; animation-delay: 2.28s; animation-duration: 3.49s; --drift: -30px; }
+.snow span:nth-child(10) { left: 79.4%; font-size: 22px; animation-delay: 0.57s; animation-duration: 4.33s; --drift: 8px; }
+.snow span:nth-child(11) { left: 42.8%; font-size: 18px; animation-delay: 1.28s; animation-duration: 4.51s; --drift: 8px; }
+.snow span:nth-child(12) { left: 6.5%; font-size: 12px; animation-delay: 2.12s; animation-duration: 4.02s; --drift: 8px; }
+.snow span:nth-child(13) { left: 80.7%; font-size: 12px; animation-delay: 0.98s; animation-duration: 5.53s; --drift: 8px; }
+.snow span:nth-child(14) { left: 91.0%; font-size: 12px; animation-delay: 1.12s; animation-duration: 4.67s; --drift: -18px; }
+.snow span:nth-child(15) { left: 13.0%; font-size: 26px; animation-delay: 0.61s; animation-duration: 3.81s; --drift: -18px; }
+.snow span:nth-child(16) { left: 22.1%; font-size: 16px; animation-delay: 0.38s; animation-duration: 5.49s; --drift: -18px; }
+.snow span:nth-child(17) { left: 17.1%; font-size: 22px; animation-delay: 1.49s; animation-duration: 4.76s; --drift: 18px; }
+.snow span:nth-child(18) { left: 44.4%; font-size: 18px; animation-delay: 0.79s; animation-duration: 4.49s; --drift: 8px; }
+.snow span:nth-child(19) { left: 66.4%; font-size: 12px; animation-delay: 1.17s; animation-duration: 4.18s; --drift: -8px; }
+.snow span:nth-child(20) { left: 41.1%; font-size: 22px; animation-delay: 2.09s; animation-duration: 4.96s; --drift: 18px; }
+.snow span:nth-child(21) { left: 88.7%; font-size: 22px; animation-delay: 1.49s; animation-duration: 3.79s; --drift: -8px; }
+.snow span:nth-child(22) { left: 50.5%; font-size: 12px; animation-delay: 1.93s; animation-duration: 3.97s; --drift: -30px; }
+.snow span:nth-child(23) { left: 50.9%; font-size: 16px; animation-delay: 0.43s; animation-duration: 5.30s; --drift: -18px; }
+.snow span:nth-child(24) { left: 59.8%; font-size: 22px; animation-delay: 0.20s; animation-duration: 4.30s; --drift: 30px; }
+.snow span:nth-child(25) { left: 63.7%; font-size: 12px; animation-delay: 1.41s; animation-duration: 3.68s; --drift: 18px; }
+.snow span:nth-child(26) { left: 9.9%; font-size: 26px; animation-delay: 1.47s; animation-duration: 5.52s; --drift: 30px; }
+.snow span:nth-child(27) { left: 86.7%; font-size: 12px; animation-delay: 0.45s; animation-duration: 3.56s; --drift: -8px; }
+.snow span:nth-child(28) { left: 69.5%; font-size: 12px; animation-delay: 1.31s; animation-duration: 3.91s; --drift: 30px; }
+.snow span:nth-child(29) { left: 10.0%; font-size: 22px; animation-delay: 0.32s; animation-duration: 3.46s; --drift: -8px; }
+.snow span:nth-child(30) { left: 77.2%; font-size: 12px; animation-delay: 0.95s; animation-duration: 3.96s; --drift: -18px; }
+.snow span:nth-child(31) { left: 27.5%; font-size: 12px; animation-delay: 1.14s; animation-duration: 4.54s; --drift: -8px; }
+.snow span:nth-child(32) { left: 7.6%; font-size: 18px; animation-delay: 1.57s; animation-duration: 3.72s; --drift: -30px; }
+.snow span:nth-child(33) { left: 23.7%; font-size: 12px; animation-delay: 1.17s; animation-duration: 5.20s; --drift: -8px; }
+.snow span:nth-child(34) { left: 44.0%; font-size: 14px; animation-delay: 0.80s; animation-duration: 5.48s; --drift: -8px; }
+.snow span:nth-child(35) { left: 40.9%; font-size: 14px; animation-delay: 0.62s; animation-duration: 4.83s; --drift: 18px; }
+.snow span:nth-child(36) { left: 38.8%; font-size: 14px; animation-delay: 0.03s; animation-duration: 5.50s; --drift: 30px; }
