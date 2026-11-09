@@ -248,3 +248,14 @@ test("/neve makes it snow in the open room, not in a private chat", () => {
   assert.deepEqual(parseInput("/snow", here, "en"), { kind: "send", msg: { type: "snow", channel: here } });
   assert.equal(parseInput("/neve", "Kota", "pt").kind, "error");
 });
+
+test("/roll throws a 6-sided die, or one with N sides; /8ball needs a question", () => {
+  assert.deepEqual(parseInput("/roll", here, "pt"), { kind: "send", msg: { type: "roll", channel: here } });
+  assert.deepEqual(parseInput("/dado 20", here, "pt"), { kind: "send", msg: { type: "roll", channel: here, sides: 20 } });
+  assert.deepEqual(parseInput("/roll d12", here, "en"), { kind: "send", msg: { type: "roll", channel: here, sides: 12 } });
+  assert.equal(parseInput("/roll 1", here, "pt").kind, "error");
+  assert.equal(parseInput("/roll 101", here, "pt").kind, "error");
+  assert.deepEqual(parseInput("/8ball vou ganhar?", here, "pt"), { kind: "send", msg: { type: "8ball", channel: here, question: "vou ganhar?" } });
+  assert.equal(parseInput("/8ball", here, "pt").kind, "error");
+  assert.equal(parseInput("/roll", "Kota", "pt").kind, "error");
+});

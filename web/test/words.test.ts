@@ -45,3 +45,8 @@ test("who is typing reads naturally for one, two and many", () => {
 test("the message box says where the message goes", () => {
   assert.equal(words("pt").ui.placeholder("#mujimbo"), "Mete dica para #mujimbo");
 });
+
+test("the magic ball has the same 12 answers in both languages (the server picks the index)", () => {
+  assert.equal(words("pt").eightBall.length, 12);
+  assert.equal(words("en").eightBall.length, 12);
+});

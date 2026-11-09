@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, Club, ErrorCode, Member as MemberInfo, ServerMessage, Status, ThrowItem } from "../../shared/protocol.ts";
@@ -22,6 +23,7 @@ type Someone = {
   cheerAt: number | undefined; // the last /bandeira
   logAt: number | undefined; // the last /log
   snowAt: number | undefined; // the last /neve
+  funAt: number | undefined; // the last /roll or /8ball
   saidAt: number[]; // their recent messages (channels and DMs), to stop a flood
 };
 
@@ -88,6 +90,8 @@ const GROUP_TORNADO_EVERY_MS = 300_000; // a tornado for everyone: once every 5 
 const THROW_BURST = 3; // chinelas, vassouras and colheres together...
 const THROW_WINDOW_MS = 10_000; // ...in this window
 const BATUQUE_EVERY_MS = 60_000; // a batuque for the whole channel: once a minute
+const FUN_EVERY_MS = 5000; // /roll and /8ball: one every 5 s per person
+export const EIGHT_BALL_ANSWERS = 12; // the client has the words (web/src/words.ts, eightBall)
 const SNOW_EVERY_MS = 60_000; // /neve: once a minute per person, so it stays special
 const CHEER_EVERY_MS = 20_000; // a club's flag across everyone's screen: once every 20 s
 const MESSAGE_BURST = 20; // messages (channels and DMs together) a person may send...
@@ -174,6 +178,7 @@ export function attachChat(
       cheerAt: undefined,
       logAt: undefined,
       snowAt: undefined,
+      funAt: undefined,
       saidAt: [],
     };
     people.set(person.id, who);
@@ -287,6 +292,25 @@ export function attachChat(
         const to = target?.nick ?? away[0]?.nick ?? wanted;
         sendToChannel(channel, { type: "throw", channel, from: me.nick, to, item: msg.item });
         for (const row of away) notify(row, msg.item, me.nick, channel, "", "high");
+        return;
+      }
+      case "roll":
+      case "8ball": {
+        // The server throws the die and shakes the ball, so nobody can pick their own luck. Everyone in
+        // the room sees it; not saved, like a nudge.
+        const channel = normaliseChannel(msg.channel);
+        if (!me.channels.has(channel)) return reject(me, "join_first", channel, `join ${channel} first`);
+        if (!visible(me)) return reject(me, "invisible_no_nudge", "", "you can't play while invisible");
+        const now = Date.now();
+        const wait = me.who.funAt === undefined ? 0 : me.who.funAt + FUN_EVERY_MS - now;
+        if (wait > 0) return reject(me, "fun_too_soon", seconds(wait), "one every 5 s");
+        me.who.funAt = now;
+        if (msg.type === "roll") {
+          const sides = msg.sides ?? 6;
+          sendToChannel(channel, { type: "roll", channel, from: me.nick, sides, result: randomInt(1, sides + 1) });
+        } else {
+          sendToChannel(channel, { type: "8ball", channel, from: me.nick, question: msg.question, answer: randomInt(EIGHT_BALL_ANSWERS) });
+        }
         return;
       }
       case "snow": {
@@ -940,6 +964,20 @@ function parseClientMessage(raw: string): ClientMessage | undefined {
     case "snow": {
       const channel = str("channel");
       return channel === undefined ? undefined : { type: "snow", channel };
+    }
+    case "roll": {
+      const channel = str("channel");
+      const sides = v.sides;
+      if (channel === undefined) return undefined;
+      if (sides === undefined) return { type: "roll", channel };
+      return typeof sides === "number" && Number.isInteger(sides) && sides >= 2 && sides <= 100 ? { type: "roll", channel, sides } : undefined;
+    }
+    case "8ball": {
+      const channel = str("channel");
+      const question = str("question")?.trim();
+      return channel === undefined || question === undefined || question.length === 0 || question.length > 200
+        ? undefined
+        : { type: "8ball", channel, question };
     }
     case "cheer": {
       const channel = str("channel");

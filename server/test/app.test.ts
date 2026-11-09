@@ -686,3 +686,22 @@ test("/neve: snow for the whole channel, once a minute per person", limits, asyn
   a.c.ws.close();
   b.c.ws.close();
 });
+
+test("/roll and /8ball: the server decides, the whole channel sees, one every 5 s", limits, async () => {
+  const a = await arrive();
+  const b = await arrive();
+  send(a.c, { type: "roll", channel: "#mujimbo", sides: 20 });
+  const roll = await until(b.c, ofType("roll"));
+  assert.equal(roll.from, a.nick);
+  assert.equal(roll.sides, 20);
+  assert.ok(Number(roll.result) >= 1 && Number(roll.result) <= 20);
+  send(a.c, { type: "8ball", channel: "#mujimbo", question: "vou ganhar?" });
+  assert.deepEqual(pick(await until(a.c, ofType("error"))), ["fun_too_soon", "5"]);
+  send(b.c, { type: "8ball", channel: "#mujimbo", question: "vou ganhar?" });
+  const ball = await until(a.c, ofType("8ball"));
+  assert.equal(ball.question, "vou ganhar?");
+  assert.ok(Number(ball.answer) >= 0 && Number(ball.answer) < 12);
+  send(b.c, { type: "roll", channel: "#mujimbo", sides: 1000 }); // not a die we throw: dropped
+  a.c.ws.close();
+  b.c.ws.close();
+});

@@ -54,6 +54,7 @@ export type ErrorCode =
   | "cheer_too_soon" // one /bandeira every 20 s; detail = seconds to wait
   | "log_too_soon" // one /log every 30 s; detail = seconds to wait
   | "snow_too_soon" // one /neve a minute; detail = seconds to wait
+  | "fun_too_soon" // one /roll or /8ball every 5 s; detail = seconds to wait
   | "invite_only" // a private channel: ask a member for /invite
   | "channel_exists" // /privado on a name that is already a public channel
   | "already_in_channel" // /invite for someone who is already there
@@ -90,6 +91,8 @@ export type ClientMessage =
   | { type: "throw"; channel: string; item: ThrowItem; nick?: string } // /chinela Kota; /batuque has no nick
   | { type: "cheer"; channel: string; club: Club } // /bandeira benfica
   | { type: "snow"; channel: string } // /neve: snow falls on everyone's screen in the room
+  | { type: "roll"; channel: string; sides?: number } // /roll, /roll 20: the server throws the die (2–100 sides, 6 by default)
+  | { type: "8ball"; channel: string; question: string } // /8ball vou ganhar?: the server shakes the magic ball
   | { type: "older"; channel: string; before: number } // scrolled to the top: the messages before this id
   | { type: "log"; channel: string } // /log: the whole saved conversation, to download as a text file
   // Notifications on this device (/notificacoes sim): the browser's push subscription, or null to stop.
@@ -149,6 +152,8 @@ export type ServerMessage =
   | { type: "throw"; channel: string; from: string; to: string | null; item: ThrowItem } // everyone sees it fly; `to` gets hit
   | { type: "cheer"; channel: string; from: string; club: Club } // a club's flag waves across everyone's screen; not saved
   | { type: "snow"; channel: string; from: string } // /neve: snow on everyone's screen in the room; not saved
+  | { type: "roll"; channel: string; from: string; sides: number; result: number } // the die, thrown by the server; not saved
+  | { type: "8ball"; channel: string; from: string; question: string; answer: number } // answer = index in the client's EIGHT_BALL list; not saved
   // Only to whoever asked: a person invite (token for "#convite=") or a device code (for "#aparelho=").
   | { type: "link"; kind: "person" | "device"; token: string; expiresAt: string; for?: string } // for = whose device code an @ made
   | { type: "links"; tokens: string[]; expiresAt: string } // several person invites at once (/convite 5), one per person

@@ -406,6 +406,12 @@ function onServer(state: State, msg: ServerMessage, at: string): State {
       return { ...next, thrown: { key: next.seq, item: msg.item, atMe } };
     }
 
+    case "roll":
+      return addEvent(state, msg.channel, w.events.roll(msg.from, msg.sides, msg.result), at, "info");
+
+    case "8ball":
+      return addEvent(state, msg.channel, w.events.eightBall(msg.from, msg.question, w.eightBall[msg.answer] ?? "…"), at, "info");
+
     case "snow": {
       const next = addEvent(state, msg.channel, w.events.snow(msg.from, msg.channel), at, "info");
       return msg.channel === state.active ? { ...next, snow: { key: next.seq } } : next;
