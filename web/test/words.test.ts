@@ -50,3 +50,13 @@ test("the magic ball has the same 12 answers in both languages (the server picks
   assert.equal(words("pt").eightBall.length, 12);
   assert.equal(words("en").eightBall.length, 12);
 });
+
+test("Dicas keeps up with the app: every newer command has a tip, in both languages", () => {
+  for (const [lang, cmds] of [
+    ["pt", ["/estilo moderno", "/log", "/convite 5", "/neve", "/roll", "/8ball ", "/bandeira "]],
+    ["en", ["/style modern", "/log", "/invitelink 5", "/snow", "/roll", "/8ball ", "/flag "]],
+  ] as const) {
+    const tips = words(lang).tips.flatMap((s) => s.items.map((i) => i.cmd));
+    for (const cmd of cmds) assert.ok(tips.includes(cmd), `${lang}: no tip for ${cmd}`);
+  }
+});
